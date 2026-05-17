@@ -1,6 +1,6 @@
 {
-  "name": "Pomodoro",
-  "description": "A minimalist, zen Pomodoro timer with task management, session tracking, smooth animations, and judicial deadline notifications.",
+  "name": "Legalis: Gestão e Cálculos",
+  "description": "Ferramenta de alta performance para advogados: Pomodoro estratégico, Calculadora Judicial com índices IPCA/SELIC, contagem de prazos detalhada e persistência de cálculos em nuvem.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

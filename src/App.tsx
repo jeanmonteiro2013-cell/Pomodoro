@@ -8,8 +8,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { initializeApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getFirestore, collection, addDoc, query, where, getDocs, doc, updateDoc, deleteDoc, serverTimestamp, orderBy, onSnapshot, getDoc } from 'firebase/firestore';
+import { auth, db, signInWithGoogle, logout } from './lib/firebase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
@@ -89,9 +93,12 @@ interface LegalDebit {
   description: string;
   value: number;
   date: string;
-  correctedValue?: number;
-  interestValue?: number;
-  totalValue?: number;
+  type: 'debit' | 'cost';
+  correctionFactor: number;
+  interestFactor: number;
+  correctionValue: number;
+  interestValue: number;
+  totalValue: number;
 }
 
 interface Settings {
@@ -344,11 +351,166 @@ export default function App() {
   const [legalDescription, setLegalDescription] = useState('');
   const [legalValue, setLegalValue] = useState('');
   const [legalDate, setLegalDate] = useState(new Date().toISOString().split('T')[0]);
+  const [legalItemType, setLegalItemType] = useState<'debit' | 'cost'>('debit');
+  const [attorneyFeesPercent, setAttorneyFeesPercent] = useState('10');
+
+  // Firebase State
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [userCalculations, setUserCalculations] = useState<any[]>([]);
+  const [currentCalculationId, setCurrentCalculationId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [calculationTitle, setCalculationTitle] = useState('');
+
+  // Local sync prevention (to avoid feedback loops)
+  const isInitialLoad = useRef(true);
 
   // Refs for timer management
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- Logic ---
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setUserCalculations([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'calculations'),
+      where('userId', '==', user.uid),
+      orderBy('updatedAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const calcs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setUserCalculations(calcs);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Sync Tasks with Cloud
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, 'tasks'),
+      where('userId', '==', user.uid),
+      orderBy('order', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const cloudTasks = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          title: data.title || data.text || '', // handle both just in case
+          completed: data.completed,
+          createdAt: data.createdAt || Date.now(),
+          priority: data.priority,
+          dueDate: data.dueDate
+        } as Task;
+      });
+      
+      setTasks(cloudTasks);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Sync Settings with Cloud
+  useEffect(() => {
+    if (!user) return;
+
+    const docRef = doc(db, 'userSettings', user.uid);
+    const unsubscribe = onSnapshot(docRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const cloudSettings = snapshot.data() as Settings;
+        setSettings(prev => ({
+          ...prev,
+          focus: cloudSettings.focus || prev.focus,
+          short: cloudSettings.short || prev.short,
+          long: cloudSettings.long || prev.long,
+          notificationsEnabled: cloudSettings.notificationsEnabled ?? prev.notificationsEnabled,
+          theme: cloudSettings.theme || prev.theme
+        }));
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleSaveCalculation = async () => {
+    if (!user) {
+      alert("Faça login para salvar seus cálculos.");
+      return;
+    }
+
+    if (legalDebits.length === 0) return;
+
+    setIsSaving(true);
+    try {
+      const data = {
+        userId: user.uid,
+        title: calculationTitle || `Cálculo ${new Date().toLocaleDateString('pt-BR')}`,
+        items: legalDebits,
+        attorneyFeesPercent: Number(attorneyFeesPercent),
+        useRealRates: useRealRates,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (currentCalculationId) {
+        await updateDoc(doc(db, 'calculations', currentCalculationId), data);
+      } else {
+        const docRef = await addDoc(collection(db, 'calculations'), {
+          ...data,
+          createdAt: serverTimestamp(),
+        });
+        setCurrentCalculationId(docRef.id);
+      }
+    } catch (error) {
+      console.error("Error saving calculation:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const loadCalculation = (calc: any) => {
+    setLegalDebits(calc.items);
+    setAttorneyFeesPercent(String(calc.attorneyFeesPercent));
+    setUseRealRates(calc.useRealRates);
+    setCalculationTitle(calc.title);
+    setCurrentCalculationId(calc.id);
+  };
+
+  const startNewCalculation = () => {
+    setLegalDebits([]);
+    setCalculationTitle('');
+    setCurrentCalculationId(null);
+  };
+
+  const deleteCalculation = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm("Tem certeza que deseja excluir este cálculo?")) return;
+    try {
+      await deleteDoc(doc(db, 'calculations', id));
+      if (currentCalculationId === id) startNewCalculation();
+    } catch (error) {
+      console.error("Error deleting:", error);
+    }
+  };
 
   // Legal Calculator Logic
   const fetchLegalRates = async (date: string) => {
@@ -362,17 +524,17 @@ export default function App() {
       const response = await fetch(`/api/indices?dataInicial=${start}&dataFinal=${end}`);
       const data = await response.json();
       
-      // Calculate accumulated IPCA and average SELIC
+      // Calculate total IPCA and total SELIC
       // This is a simplified version for the quick tool
-      const totalIpca = data.ipca.reduce((acc: number, item: any) => acc + (parseFloat(item.valor) / 100), 0);
-      const avgSelic = data.selic.reduce((acc: number, item: any) => acc + parseFloat(item.valor), 0) / (data.selic.length || 1);
+      const totalIpcaPercent = data.ipca.reduce((acc: number, item: any) => acc + parseFloat(item.valor), 0);
+      const totalSelicPercent = data.selic.reduce((acc: number, item: any) => acc + parseFloat(item.valor), 0);
       
       // Law 14.905/2024 logic: Juros = SELIC - IPCA (min 0)
-      const calculatedInterest = Math.max(0, (avgSelic - (totalIpca * 100)) / (data.selic.length || 1));
+      const calculatedInterestPercent = Math.max(0, totalSelicPercent - totalIpcaPercent);
       
       return {
-        correction: totalIpca * 100,
-        interest: calculatedInterest
+        correction: totalIpcaPercent,
+        interest: calculatedInterestPercent
       };
     } catch (error) {
       console.error("Fetch rates error:", error);
@@ -414,19 +576,29 @@ export default function App() {
       }
     }
 
-    const originalValue = numericValue;
+    const principal = numericValue;
+    // For 'cost', interest is forced to 0
     const months = Math.max(0, Math.floor((Date.now() - new Date(legalDate).getTime()) / (1000 * 60 * 60 * 24 * 30.44)));
-    const interestTotal = (originalValue * (currentInterest / 100)) * months;
-    const correctionTotal = originalValue * (currentCorrection / 100);
+    
+    // If not using real rates (manual), the interest input is usually "per month"
+    // If using real rates, our fetcher returns the "total percentage" for the period
+    const finalInterestTotalRate = legalItemType === 'cost' ? 0 : (useRealRates ? currentInterest : (currentInterest * months));
+    const finalCorrectionTotalRate = currentCorrection; // Static or Total from API
+    
+    const correctionValue = principal * (finalCorrectionTotalRate / 100);
+    const interestValue = principal * (finalInterestTotalRate / 100);
     
     const newDebit: LegalDebit = {
       id: generateId(),
-      description: legalDescription || `Débito ${legalDebits.length + 1}`,
-      value: originalValue,
+      description: legalDescription || (legalItemType === 'debit' ? `Débito ${legalDebits.length + 1}` : `Custo ${legalDebits.length + 1}`),
+      value: principal,
       date: legalDate,
-      interestValue: interestTotal,
-      correctedValue: originalValue + correctionTotal,
-      totalValue: originalValue + interestTotal + correctionTotal
+      type: legalItemType,
+      correctionFactor: finalCorrectionTotalRate,
+      interestFactor: finalInterestTotalRate,
+      correctionValue: correctionValue,
+      interestValue: interestValue,
+      totalValue: principal + correctionValue + interestValue
     };
 
     setLegalDebits(prev => [...prev, newDebit]);
@@ -440,32 +612,45 @@ export default function App() {
 
   const exportPDF = () => {
     const doc = new jsPDF();
-    const total = legalDebits.reduce((acc, d) => acc + (d.totalValue || 0), 0);
+    const subtotal = legalDebits.reduce((acc, d) => acc + (d.totalValue || 0), 0);
+    const fees = subtotal * (Number(attorneyFeesPercent) / 100);
+    const grandTotal = subtotal + fees;
     
     doc.setFontSize(18);
-    doc.text("Planilha de Débitos Jurídicos", 14, 22);
+    doc.text("Planilha de Débitos Jurídicos Detalhada", 14, 22);
     doc.setFontSize(10);
     doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}`, 14, 30);
-    doc.text(`Taxa de Juros: ${legalInterestRate}% /mês | Correção: ${legalCorrectionIndex}%`, 14, 35);
+    doc.text(`Regra de Juros: ${useRealRates ? "SELIC - IPCA (Lei 14.905/2024)" : `${legalInterestRate}%/mês`}`, 14, 35);
+    doc.text(`Honorários Advocatícios: ${attorneyFeesPercent}%`, 14, 40);
 
     const tableData = legalDebits.map(d => [
       d.description,
-      new Date(d.date).toLocaleDateString('pt-BR'),
+      new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR'),
+      d.type === 'debit' ? 'Principal' : 'Custo',
       `R$ ${d.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      `R$ ${(d.interestValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      `R$ ${(d.totalValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+      `R$ ${d.correctionValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${d.correctionFactor.toFixed(2)}%)`,
+      `R$ ${d.interestValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${d.interestFactor.toFixed(2)}%)`,
+      `R$ ${d.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
     ]);
 
     autoTable(doc, {
-      startY: 40,
-      head: [['Descrição', 'Data', 'Valor Orig.', 'Juros', 'Total']],
+      startY: 45,
+      head: [['Descrição', 'Data', 'Tipo', 'Original', 'Correção', 'Juros', 'Subtotal']],
       body: tableData,
-      foot: [['', '', '', 'TOTAL GERAL', `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`]],
       theme: 'grid',
-      headStyles: { fillColor: [244, 63, 94] }
+      headStyles: { fillColor: [244, 63, 94] },
+      styles: { fontSize: 8 }
     });
 
-    doc.save("calculo_pomodoro_legal.pdf");
+    const lastY = (doc as any).lastAutoTable.finalY + 10;
+    doc.setFontSize(10);
+    doc.text(`Subtotal dos Itens: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 140, lastY);
+    doc.text(`Honorários (${attorneyFeesPercent}%): R$ ${fees.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 140, lastY + 6);
+    doc.setFontSize(12);
+    doc.setTextColor(244, 63, 94);
+    doc.text(`TOTAL GERAL: R$ ${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 140, lastY + 14);
+
+    doc.save(`calculo_juridico_${new Date().getTime()}.pdf`);
   };
 
   // Simple Calculator Logic
@@ -525,39 +710,116 @@ export default function App() {
     audio.play().catch(e => console.error("Audio play failed:", e));
   }, [soundEnabled]);
 
-  const recordSession = useCallback((type: SessionType) => {
-    const newEntry: HistoryEntry = {
-      id: generateId(),
+  // Sync History with Cloud
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, 'history'),
+      where('userId', '==', user.uid),
+      orderBy('timestamp', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const cloudHistory = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as HistoryEntry));
+      
+      setHistory(cloudHistory);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const recordSession = useCallback(async (type: SessionType) => {
+    const newEntryObj = {
       type,
       duration: settings[type],
       timestamp: Date.now(),
       taskId: type === 'focus' ? activeTaskId || undefined : undefined,
     };
-    setHistory(prev => [newEntry, ...prev]);
-  }, [settings, activeTaskId]);
 
-  const addTask = () => {
+    if (user) {
+      try {
+        await addDoc(collection(db, 'history'), {
+          ...newEntryObj,
+          userId: user.uid
+        });
+      } catch (err) {
+        console.error("Cloud record session error:", err);
+      }
+    } else {
+      const newEntry: HistoryEntry = {
+        ...newEntryObj,
+        id: generateId(),
+      };
+      setHistory(prev => [newEntry, ...prev]);
+    }
+  }, [settings, activeTaskId, user]);
+
+  const addTask = async () => {
     if (!newTaskTitle.trim()) return;
-    const newTask: Task = {
-      id: generateId(),
+    const newTaskObj = {
       title: newTaskTitle.trim(),
       completed: false,
       createdAt: Date.now(),
       priority: taskPriority,
-      dueDate: taskDueDate || undefined
+      dueDate: taskDueDate || undefined,
+      order: tasks.length
     };
-    setTasks(prev => [newTask, ...prev]);
+
+    if (user) {
+      try {
+        await addDoc(collection(db, 'tasks'), {
+          ...newTaskObj,
+          userId: user.uid,
+          updatedAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Cloud save task error:", err);
+      }
+    } else {
+      const newTask: Task = {
+        ...newTaskObj,
+        id: generateId(),
+      };
+      setTasks(prev => [newTask, ...prev]);
+    }
+
     setNewTaskTitle('');
     setTaskDueDate('');
     setTaskPriority('low');
   };
 
-  const toggleTask = (id: string) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+  const toggleTask = async (id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+
+    if (user) {
+      try {
+        await updateDoc(doc(db, 'tasks', id), {
+          completed: !task.completed,
+          updatedAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Cloud toggle task error:", err);
+      }
+    } else {
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+    }
   };
 
-  const deleteTask = (id: string) => {
-    setTasks(prev => prev.filter(t => t.id !== id));
+  const deleteTask = async (id: string) => {
+    if (user) {
+      try {
+        await deleteDoc(doc(db, 'tasks', id));
+      } catch (err) {
+        console.error("Cloud delete task error:", err);
+      }
+    } else {
+      setTasks(prev => prev.filter(t => t.id !== id));
+    }
     if (activeTaskId === id) setActiveTaskId(null);
   };
 
@@ -591,11 +853,29 @@ export default function App() {
     }
   }, [sessionType, settings, isActive]);
 
-  // Persist settings
+  // Persist settings & Cloud Sync
   useEffect(() => {
-    try {
-      localStorage.setItem('zen_pomo_settings', JSON.stringify(settings));
-    } catch (e) { console.error("Save settings error:", e); }
+    if (!isInitialLoad.current) {
+      try {
+        localStorage.setItem('zen_pomo_settings', JSON.stringify(settings));
+      } catch (e) { console.error("Save settings error:", e); }
+
+      if (user) {
+        const syncSettings = async () => {
+          try {
+            const { setDoc } = await import('firebase/firestore');
+            await setDoc(doc(db, 'userSettings', user.uid), {
+              ...settings,
+              userId: user.uid,
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+          } catch (e) {
+            console.error("Cloud settings sync error:", e);
+          }
+        };
+        syncSettings();
+      }
+    }
 
     // Apply theme
     if (settings.theme === 'dark') {
@@ -603,7 +883,9 @@ export default function App() {
     } else {
       document.documentElement.classList.remove('dark');
     }
-  }, [settings]);
+    
+    isInitialLoad.current = false;
+  }, [settings, user]);
 
   // Persist history
   useEffect(() => {
@@ -672,6 +954,28 @@ export default function App() {
         </motion.div>
 
         <div className="flex items-center gap-1 md:gap-2">
+          {user ? (
+            <button 
+              onClick={logout}
+              className="flex items-center gap-2 p-1 md:p-2 bg-primary/5 rounded-xl hover:bg-rose-50 hover:text-rose-600 transition-all group"
+              title="Sair"
+            >
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-background text-[10px] font-black uppercase">
+                {user.email?.substring(0, 2)}
+              </div>
+              <span className="hidden md:block text-[10px] font-black uppercase tracking-widest">Sair</span>
+            </button>
+          ) : (
+            <button 
+              onClick={signInWithGoogle}
+              className="flex items-center gap-2 p-2 bg-primary/5 rounded-xl text-primary hover:bg-primary hover:text-background transition-all"
+              title="Entrar com Google"
+            >
+              <Scale size={20} className="md:w-6 md:h-6" />
+              <span className="hidden md:block text-[10px] font-black uppercase tracking-widest">Login</span>
+            </button>
+          )}
+
           <button 
             onClick={() => setShowDeadlines(true)}
             className="p-2 rounded-xl text-primary hover:bg-primary/5 transition-colors"
@@ -1684,13 +1988,34 @@ export default function App() {
                         )}
 
                         <div className="bg-primary/5 border border-primary/10 p-4 rounded-2xl space-y-4">
+                          <div className="flex gap-1 bg-white/50 p-1 rounded-xl border border-primary/10">
+                            <button 
+                              onClick={() => setLegalItemType('debit')}
+                              className={cn(
+                                "flex-1 py-2 rounded-lg text-[10px] font-black uppercase transition-all",
+                                legalItemType === 'debit' ? "bg-primary text-background shadow-sm" : "text-stone-400"
+                              )}
+                            >
+                              Débito
+                            </button>
+                            <button 
+                              onClick={() => setLegalItemType('cost')}
+                              className={cn(
+                                "flex-1 py-2 rounded-lg text-[10px] font-black uppercase transition-all",
+                                legalItemType === 'cost' ? "bg-secondary text-white shadow-sm" : "text-stone-400"
+                              )}
+                            >
+                              Custo Judicial
+                            </button>
+                          </div>
+
                           <div className="space-y-1">
-                            <label className="text-[10px] text-stone-500 uppercase tracking-widest font-bold">Descrição do Débito</label>
+                            <label className="text-[10px] text-stone-500 uppercase tracking-widest font-bold">Descrição</label>
                             <input 
                               type="text"
                               value={legalDescription}
                               onChange={(e) => setLegalDescription(e.target.value)}
-                              placeholder="Ex: Aluguel Atrasado"
+                              placeholder={legalItemType === 'debit' ? "Ex: Indenização" : "Ex: Custas Iniciais"}
                               className="w-full bg-white/50 border border-primary/10 rounded-xl px-4 py-3 text-sm text-primary outline-none focus:border-primary/50"
                             />
                           </div>
@@ -1730,82 +2055,218 @@ export default function App() {
                         </div>
 
                         {legalDebits.length > 0 && (
-                          <button 
-                            onClick={exportPDF}
-                            className="w-full py-3 bg-white border border-primary/10 text-primary rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-50 transition-all shadow-sm"
-                          >
-                            <Download size={18} className="text-secondary" />
-                            EXPORTAR RELATÓRIO PDF
-                          </button>
+                          <div className="space-y-4">
+                            <div className="bg-secondary/5 border border-secondary/10 p-4 rounded-2xl">
+                              <label className="text-[10px] text-secondary font-black uppercase tracking-widest mb-2 block">Honorários Advocatícios (%)</label>
+                              <div className="flex bg-white/70 border border-secondary/20 rounded-xl px-4 py-3">
+                                <Scale size={16} className="text-secondary mr-2 mt-0.5" />
+                                <input 
+                                  type="number" 
+                                  value={attorneyFeesPercent}
+                                  onChange={(e) => setAttorneyFeesPercent(e.target.value)}
+                                  className="bg-transparent border-none outline-none text-secondary w-full text-sm font-bold"
+                                />
+                              </div>
+                            </div>
+
+                            <button 
+                              onClick={exportPDF}
+                              className="w-full py-3 bg-white border border-primary/10 text-primary rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-50 transition-all shadow-sm"
+                            >
+                              <Download size={18} className="text-secondary" />
+                              EXPORTAR RELATÓRIO PDF
+                            </button>
+                          </div>
                         )}
                       </div>
 
-                      {/* Items List */}
-                      <div className="flex-1 flex flex-col h-full overflow-hidden">
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="text-xs font-bold text-stone-500 uppercase tracking-widest">Planilha de Cálculos</h3>
-                          <span className="text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded uppercase font-bold">
-                            Total: R$ {legalDebits.reduce((acc, d) => acc + (d.totalValue || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                <div className="flex-1 flex flex-col h-full overflow-hidden">
+                  <div className="flex justify-between items-end mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-xs font-black text-stone-500 uppercase tracking-widest">Planilha de Cálculos</h3>
+                        {currentCalculationId && (
+                          <span className="bg-emerald-50 text-emerald-600 text-[8px] font-black px-2 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1">
+                            <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" /> SALVO NA NUVEM
                           </span>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-2">
-                          {legalDebits.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-40 text-stone-300">
-                              <FileText size={32} strokeWidth={1} />
-                              <span className="text-[10px] uppercase tracking-widest mt-2">Vazio</span>
-                            </div>
-                          ) : (
-                            legalDebits.map((d) => (
-                              <motion.div 
-                                key={d.id}
-                                layout
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                className="p-4 rounded-xl bg-white border border-primary/5 relative group shadow-sm hover:shadow-md transition-shadow"
-                              >
-                                <button 
-                                  onClick={() => removeLegalDebit(d.id)}
-                                  className="absolute top-2 right-2 p-1 text-stone-300 hover:text-rose-500 transition-colors"
-                                >
-                                  <XIcon size={14} />
-                                </button>
-                                <div className="flex justify-between items-start mb-2">
-                                  <div className="pr-6">
-                                    <h4 className="text-primary font-bold text-sm truncate max-w-[200px]">{d.description}</h4>
-                                    <div className="flex items-center gap-2 mt-1">
-                                      <Calendar size={10} className="text-stone-400" />
-                                      <span className="text-[9px] text-stone-400 font-bold uppercase tracking-tighter">
-                                        Vcto: {new Date(d.date).toLocaleDateString('pt-BR')}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="text-stone-400 text-[10px]">Total do Item</div>
-                                    <div className="text-primary font-display font-medium">
-                                      R$ {d.totalValue?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="grid grid-cols-3 gap-2 border-t border-primary/5 pt-2 mt-2">
-                                  <div className="text-center">
-                                    <div className="text-[8px] text-stone-400 uppercase font-bold">Principal</div>
-                                    <div className="text-[10px] text-stone-500 font-bold">R$ {d.value.toLocaleString('pt-BR')}</div>
-                                  </div>
-                                  <div className="text-center">
-                                    <div className="text-[8px] text-stone-400 uppercase font-bold">Juros</div>
-                                    <div className="text-[10px] text-secondary font-bold">R$ {d.interestValue?.toLocaleString('pt-BR')}</div>
-                                  </div>
-                                  <div className="text-center">
-                                    <div className="text-[8px] text-stone-400 uppercase font-bold">Corr.</div>
-                                    <div className="text-[10px] text-primary/80 font-bold">R$ {(d.correctedValue! - d.value).toLocaleString('pt-BR')}</div>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            ))
-                          )}
+                        )}
+                      </div>
+                      <input 
+                        type="text"
+                        value={calculationTitle}
+                        onChange={(e) => setCalculationTitle(e.target.value)}
+                        placeholder="Título do Cálculo (ex: Processo 0001234...)"
+                        className="w-full bg-transparent border-none text-primary font-bold text-sm outline-none placeholder:text-stone-300"
+                      />
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="text-right">
+                        <div className="text-[10px] text-primary/40 uppercase font-black tracking-widest text-[9px]">Total Líquido</div>
+                        <div className="text-xl font-display font-black text-primary">
+                          R$ {legalDebits.reduce((acc, d) => acc + (d.totalValue || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </div>
                       </div>
+                      <div className="flex gap-2">
+                        {legalDebits.length > 0 && (
+                          <button 
+                            onClick={handleSaveCalculation}
+                            disabled={isSaving}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2",
+                              isSaving ? "bg-stone-100 text-stone-400" : "bg-primary text-background shadow-lg shadow-primary/20 hover:scale-105"
+                            )}
+                          >
+                            {isSaving ? 'Salvando...' : (currentCalculationId ? 'Atualizar Cloud' : 'Salvar na Nuvem')}
+                          </button>
+                        )}
+                        {currentCalculationId && (
+                          <button 
+                            onClick={startNewCalculation}
+                            className="px-4 py-2 bg-stone-100 text-stone-600 rounded-xl text-[10px] font-black uppercase hover:bg-stone-200 transition-colors"
+                          >
+                            Novo
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 flex gap-6 overflow-hidden">
+                    <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pr-2 mb-4">
+                      {legalDebits.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full text-stone-200">
+                          <FileText size={48} strokeWidth={1} />
+                          <span className="text-[10px] font-black uppercase tracking-widest mt-4">Nenhum item adicionado</span>
+                        </div>
+                      ) : (
+                        legalDebits.map((d) => (
+                                <motion.div 
+                                  key={d.id}
+                                  layout
+                                  initial={{ opacity: 0, scale: 0.95 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  className="p-5 rounded-2xl bg-white border border-primary/10 relative group shadow-sm hover:shadow-lg transition-all"
+                                >
+                                  <button 
+                                    onClick={() => removeLegalDebit(d.id)}
+                                    className="absolute top-3 right-3 p-1.5 bg-rose-50 text-rose-300 hover:text-rose-600 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                                  >
+                                    <XIcon size={12} />
+                                  </button>
+                                  
+                                  <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                      <div className={cn(
+                                        "text-[8px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-full inline-block mb-1",
+                                        d.type === 'debit' ? "bg-primary/10 text-primary" : "bg-secondary/10 text-secondary"
+                                      )}>
+                                        {d.type === 'debit' ? 'Principal' : 'Custo Judicial'}
+                                      </div>
+                                      <h4 className="text-primary font-bold text-base leading-tight">{d.description}</h4>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <Calendar size={10} className="text-stone-400" />
+                                        <span className="text-[9px] text-stone-400 font-bold uppercase tracking-tight">
+                                          Vcto: {new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-stone-400 text-[10px] font-bold uppercase">Subtotal</div>
+                                      <div className="text-lg font-display font-black text-primary">
+                                        R$ {d.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-3 gap-4 border-t border-primary/5 pt-4">
+                                    <div className="space-y-0.5">
+                                      <div className="text-[8px] text-stone-400 uppercase font-black tracking-widest">Base (D0)</div>
+                                      <div className="text-xs text-primary font-bold tabular-nums">R$ {d.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <div className="text-[8px] text-secondary uppercase font-black tracking-widest">Juros ({d.interestFactor.toFixed(2)}%)</div>
+                                      <div className="text-xs text-secondary font-bold tabular-nums">+ R$ {d.interestValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <div className="text-[8px] text-primary/60 uppercase font-black tracking-widest">Correção ({d.correctionFactor.toFixed(2)}%)</div>
+                                      <div className="text-xs text-primary/80 font-bold tabular-nums">+ R$ {d.correctionValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              ))
+                            )}
+                        </div>
+
+                        {/* Cloud History Sidebar */}
+                        {user && userCalculations.length > 0 && (
+                          <div className="w-64 flex flex-col gap-4 border-l border-primary/5 pl-6">
+                            <div className="flex justify-between items-center">
+                              <h3 className="text-[10px] font-black text-primary/40 uppercase tracking-[0.2em]">Histórico Cloud</h3>
+                              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" title="Sincronizado" />
+                            </div>
+                            <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-1">
+                              {userCalculations.map((calc) => (
+                                <button 
+                                  key={calc.id}
+                                  onClick={() => loadCalculation(calc)}
+                                  className={cn(
+                                    "w-full text-left p-3 rounded-2xl border transition-all relative group",
+                                    currentCalculationId === calc.id 
+                                      ? "bg-primary/10 border-primary/20 shadow-sm" 
+                                      : "bg-white border-primary/5 hover:border-primary/20 hover:bg-primary/[0.02]"
+                                  )}
+                                >
+                                  <div onClick={(e) => deleteCalculation(calc.id, e)} className="absolute -top-1 -right-1 p-1 bg-rose-50 text-rose-300 hover:text-rose-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <X size={10} />
+                                  </div>
+                                  <div className="text-[10px] font-bold text-primary truncate pr-4">{calc.title}</div>
+                                  <div className="flex justify-between items-center mt-2">
+                                    <span className="text-[8px] text-stone-400 font-bold uppercase tracking-tight">
+                                      {calc.updatedAt?.toDate()?.toLocaleDateString('pt-BR') || 'Salvo agora'}
+                                    </span>
+                                    <span className="text-[10px] font-black text-primary">
+                                      R$ {calc.items.reduce((acc: number, d: any) => acc + d.totalValue, 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                                    </span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {legalDebits.length > 0 && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="bg-gradient-to-br from-primary to-primary-dark p-6 rounded-3xl text-white shadow-2xl shadow-primary/30"
+                            >
+                              <div className="flex justify-between items-center opacity-60 text-[10px] font-black uppercase tracking-[0.2em] mb-4 border-b border-white/10 pb-4">
+                                <span>Resumo Consolidado</span>
+                                <span>R$ {legalDebits.reduce((acc, d) => acc + d.totalValue, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                              </div>
+                              
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                  <div className="text-[10px] font-bold uppercase opacity-80">Subtotal Líquido</div>
+                                  <div className="text-sm font-bold">R$ {legalDebits.reduce((acc, d) => acc + d.totalValue, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                                </div>
+                                <div className="flex justify-between items-center text-secondary-light">
+                                  <div className="text-[10px] font-bold uppercase">Honorários ({attorneyFeesPercent}%)</div>
+                                  <div className="text-sm font-bold">
+                                    + R$ {(legalDebits.reduce((acc, d) => acc + d.totalValue, 0) * (Number(attorneyFeesPercent) / 100)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </div>
+                                </div>
+                                <div className="pt-4 border-t border-white/20 flex justify-between items-center">
+                                  <div className="text-xs font-black uppercase tracking-widest">Total Geral</div>
+                                  <div className="text-2xl font-display font-black">
+                                    R$ {(legalDebits.reduce((acc, d) => acc + d.totalValue, 0) * (1 + Number(attorneyFeesPercent) / 100)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </div>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </div>
                     </div>
                   </div>
                 )}

@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "calculation": {
+      "title": "Cálculo Judicial",
+      "description": "Um cálculo judicial salvo pelo usuário.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID do usuário proprietário" },
+        "title": { "type": "string", "description": "Título do cálculo" },
+        "items": { "type": "array", "description": "Lista de débitos e custos" },
+        "attorneyFeesPercent": { "type": "number", "description": "Percentual de honorários" },
+        "useRealRates": { "type": "boolean", "description": "Se usa taxas reais IPCA/SELIC" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "items", "createdAt", "updatedAt"]
+    },
+    "task": {
+      "title": "Tarefa",
+      "description": "Uma tarefa do sistema Pomodoro.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "text": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "order": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "text", "completed"]
+    },
+    "userSettings": {
+      "title": "Configurações",
+      "description": "Preferências do usuário.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "pomodoroTime": { "type": "number" },
+        "shortBreakTime": { "type": "number" },
+        "longBreakTime": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "historyEntry": {
+      "title": "Histórico",
+      "description": "Entrada de histórico de sessão.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string" },
+        "duration": { "type": "number" },
+        "timestamp": { "type": "number" },
+        "taskId": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "calculations/{calculationId}": {
+      "schema": "calculation",
+      "description": "Coleção principal de cálculos salvos"
+    },
+    "tasks/{taskId}": {
+      "schema": "task",
+      "description": "Tarefas do usuário"
+    },
+    "userSettings/{userId}": {
+      "schema": "userSettings",
+      "description": "Configurações globais do usuário"
+    },
+    "history/{historyId}": {
+      "schema": "historyEntry",
+      "description": "Histórico de sessões do usuário"
+    }
+  }
+}

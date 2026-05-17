@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Entity Validator: Calculation
+    function isValidCalculation(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.title is string && data.title.size() <= 200 &&
+             data.items is list && data.items.size() <= 100 &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    match /calculations/{calculationId} {
+      allow create: if isSignedIn() && 
+                      isValidId(calculationId) && 
+                      isValidCalculation(incoming()) &&
+                      incoming().createdAt == request.time &&
+                      incoming().updatedAt == request.time;
+      
+      allow update: if isSignedIn() && 
+                      isOwner(existing().userId) &&
+                      isValidCalculation(incoming()) &&
+                      incoming().userId == existing().userId &&
+                      incoming().createdAt == existing().createdAt &&
+                      incoming().updatedAt == request.time &&
+                      (
+                        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'items', 'attorneyFeesPercent', 'useRealRates', 'updatedAt'])
+                      );
+      
+      allow delete: if isSignedIn() && isOwner(existing().userId);
+      allow get: if isSignedIn() && isOwner(existing().userId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /tasks/{taskId} {
+      allow create: if isSignedIn() && 
+                      isValidId(taskId) && 
+                      incoming().userId == request.auth.uid &&
+                      incoming().text is string && 
+                      incoming().text.size() <= 500;
+      allow update, delete: if isSignedIn() && isOwner(existing().userId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /userSettings/{userId} {
+      allow get, write: if isSignedIn() && isOwner(userId);
+    }
+
+    match /history/{historyId} {
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow list, delete: if isSignedIn() && isOwner(existing().userId);
+    }
+  }
+}
