@@ -119,30 +119,30 @@ const DEFAULT_SETTINGS: Settings = {
 
 // --- Holiday & Deadline Helpers ---
 
-const HOLIDAYS_2026 = [
-  '2026-01-01', // Confraternização Universal
-  '2026-01-25', // Aniversário de São Paulo (Cidade)
-  '2026-02-16', // Carnaval
-  '2026-02-17', // Carnaval
-  '2026-04-03', // Sexta-feira Santa
-  '2026-04-21', // Tiradentes
-  '2026-05-01', // Dia do Trabalho
-  '2026-06-04', // Corpus Christi
-  '2026-07-09', // Revolução Constitucionalista (Estado)
-  '2026-09-07', // Independência
-  '2026-10-12', // Padroeira do Brasil
-  '2026-11-02', // Finados
-  '2026-11-15', // Proclamação da República
-  '2026-11-20', // Dia da Consciência Negra
-  '2026-12-25', // Natal
-];
+const HOLIDAYS_2026: Record<string, string> = {
+  '2026-01-01': 'Confraternização Universal',
+  '2026-01-25': 'Aniversário de São Paulo (Cidade)',
+  '2026-02-16': 'Carnaval',
+  '2026-02-17': 'Carnaval',
+  '2026-04-03': 'Sexta-feira Santa',
+  '2026-04-21': 'Tiradentes',
+  '2026-05-01': 'Dia do Trabalho',
+  '2026-06-04': 'Corpus Christi',
+  '2026-07-09': 'Revolução Constitucionalista (Estado)',
+  '2026-09-07': 'Independência',
+  '2026-10-12': 'Padroeira do Brasil',
+  '2026-11-02': 'Finados',
+  '2026-11-15': 'Proclamação da República',
+  '2026-11-20': 'Dia da Consciência Negra',
+  '2026-12-25': 'Natal',
+};
 
 function getDayStatus(date: Date): { isBusiness: boolean; reason?: string } {
   const day = date.getDay();
   if (day === 0 || day === 6) return { isBusiness: false, reason: 'Final de Semana' };
   
   const dateStr = date.toISOString().split('T')[0];
-  if (HOLIDAYS_2026.includes(dateStr)) return { isBusiness: false, reason: 'Feriado' };
+  if (HOLIDAYS_2026[dateStr]) return { isBusiness: false, reason: `Feriado: ${HOLIDAYS_2026[dateStr]}` };
   
   // Recesso Forense (Dec 20 - Jan 20)
   const month = date.getMonth();
@@ -709,42 +709,54 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center justify-center p-6 mt-16">
-        <div className="w-full max-w-md bg-white/50 backdrop-blur-xl border border-primary/5 rounded-[48px] p-12 shadow-2xl shadow-primary/5">
+      <main className="flex-1 flex flex-col items-center justify-center p-6 mt-16 max-w-full">
+        <motion.div 
+          animate={{ scale: isActive ? 1.02 : 1 }}
+          className={cn(
+            "w-full max-w-md bg-card/40 backdrop-blur-3xl border border-primary/5 rounded-[48px] p-8 md:p-12 shadow-2xl transition-all duration-700",
+            isActive ? "shadow-primary/20 ring-1 ring-primary/10" : "shadow-primary/5"
+          )}
+        >
           {/* Mode Switcher */}
-          <div className="flex justify-center gap-1 bg-primary/5 p-1 rounded-2xl mb-12">
-            {[
-              { id: 'focus', icon: Brain, label: 'Foco' },
-              { id: 'short', icon: Coffee, label: 'Pausa' },
-              { id: 'long', icon: Battery, label: 'Descanso' }
-            ].map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setSessionType(m.id as SessionType)}
-                className={cn(
-                  "flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300",
-                  sessionType === m.id 
-                    ? "bg-primary text-white shadow-lg shadow-primary/20 scale-105" 
-                    : "text-primary/60 hover:text-primary"
-                )}
-              >
-                <m.icon size={16} />
-                <span className="text-xs font-bold uppercase tracking-widest">{m.label}</span>
-              </button>
-            ))}
-          </div>
+          {!isActive && (
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex justify-center gap-1 bg-primary/5 p-1.5 rounded-2xl mb-12"
+            >
+              {[
+                { id: 'focus', icon: Brain, label: 'Foco' },
+                { id: 'short', icon: Coffee, label: 'Pausa' },
+                { id: 'long', icon: Battery, label: 'Descanso' }
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setSessionType(m.id as SessionType)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 md:px-6 py-3 rounded-xl transition-all duration-500",
+                    sessionType === m.id 
+                      ? "bg-primary text-background shadow-lg shadow-primary/20 scale-105" 
+                      : "text-primary/40 hover:text-primary hover:bg-primary/5"
+                  )}
+                >
+                  <m.icon size={14} className="md:size-4" />
+                  <span className="text-[10px] md:text-xs font-black uppercase tracking-widest">{m.label}</span>
+                </button>
+              ))}
+            </motion.div>
+          )}
 
           {/* Main Timer Display */}
-          <div className="relative aspect-square flex items-center justify-center mb-12">
+          <div className="relative aspect-square flex items-center justify-center mb-8 md:mb-12">
             {/* Progress Circle Wrapper */}
-            <div className="absolute inset-0 transition-transform duration-700 hover:scale-105">
+            <div className="absolute inset-0">
               <svg className="w-full h-full -rotate-90">
                 <circle
                   cx="50%"
                   cy="50%"
                   r="48%"
                   className="stroke-primary/5 fill-none"
-                  strokeWidth="2"
+                  strokeWidth="1"
                 />
                 <motion.circle
                   cx="50%"
@@ -757,48 +769,74 @@ export default function App() {
                   animate={{ pathLength: (percentComplete || 1) }}
                   transition={{ duration: 1, ease: "linear" }}
                 />
+                {isActive && (
+                  <motion.circle
+                    cx="50%"
+                    cy="50%"
+                    r="48%"
+                    className="stroke-primary/20 fill-none"
+                    strokeWidth="8"
+                    animate={{ scale: [1, 1.05, 1], opacity: [0.1, 0.3, 0.1] }}
+                    transition={{ duration: 4, repeat: Infinity }}
+                  />
+                )}
               </svg>
             </div>
             
             <div className="flex flex-col items-center">
               <motion.span 
                 key={timeLeft}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-8xl font-display font-bold text-primary tabular-nums"
+                animate={{ scale: isActive ? 1.05 : 1 }}
+                className={cn(
+                  "text-7xl md:text-8xl font-display font-black text-primary tabular-nums tracking-tight transition-all duration-300",
+                  isActive && "drop-shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)]"
+                )}
               >
                 {formatTime(timeLeft)}
               </motion.span>
               <div className="mt-4 flex flex-col items-center gap-1">
-                <p className="text-[10px] text-primary/40 uppercase font-black tracking-[0.3em] overflow-hidden">
-                  Sessão Jurídica em Curso
+                <p className="text-[9px] md:text-[10px] text-primary/30 uppercase font-black tracking-[0.4em] overflow-hidden">
+                  {sessionType === 'focus' ? 'ALTA PERFORMANCE' : 'RECUPERAÇÃO ESTRATÉGICA'}
                 </p>
-                {activeTaskId && (
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-secondary/10 rounded-full">
-                    <div className="w-1.5 h-1.5 bg-secondary rounded-full animate-pulse" />
-                    <span className="text-[10px] text-secondary font-black uppercase truncate max-w-[120px]">
-                      {tasks.find(t => t.id === activeTaskId)?.title}
-                    </span>
-                  </div>
-                )}
+                <AnimatePresence mode="wait">
+                  {activeTaskId && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary/10 border border-secondary/5 rounded-full mt-2"
+                    >
+                      <div className="w-1.5 h-1.5 bg-secondary rounded-full animate-pulse" />
+                      <span className="text-[9px] md:text-[10px] text-secondary font-black uppercase truncate max-w-[150px]">
+                        {tasks.find(t => t.id === activeTaskId)?.title}
+                      </span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           </div>
 
           {/* Controls */}
-          <div className="flex items-center justify-center gap-6">
+          <div className="flex items-center justify-center gap-6 md:gap-8">
             <button
               onClick={resetTimer}
-              className="w-16 h-16 rounded-full border border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white hover:border-primary transition-all active:scale-95"
+              className="w-14 h-14 md:w-16 md:h-16 rounded-full border border-primary/10 flex items-center justify-center text-primary/60 hover:bg-primary/5 hover:text-primary transition-all active:scale-90"
+              title="Reiniciar"
             >
-              <RotateCcw size={24} />
+              <RotateCcw size={20} className="md:size-24" />
             </button>
             
             <button
               onClick={() => setIsActive(!isActive)}
-              className="w-24 h-24 rounded-full bg-primary text-white flex items-center justify-center shadow-xl shadow-primary/30 hover:scale-105 transition-all active:scale-95"
+              className={cn(
+                "w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center shadow-2xl transition-all duration-500 active:scale-95",
+                isActive 
+                  ? "bg-rose-500 text-white shadow-rose-500/30" 
+                  : "bg-primary text-background shadow-primary/30 hover:scale-105"
+              )}
             >
-              {isActive ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" className="ml-1" />}
+              {isActive ? <Pause size={28} md:size-32 fill="currentColor" /> : <Play size={28} md:size-32 fill="currentColor" className="ml-1" />}
             </button>
 
             <button
@@ -808,12 +846,13 @@ export default function App() {
                 setIsActive(false);
                 setTimeLeft(settings[nextType] * 60);
               }}
-              className="w-16 h-16 rounded-full border border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white hover:border-primary transition-all active:scale-95"
+              className="w-14 h-14 md:w-16 md:h-16 rounded-full border border-primary/10 flex items-center justify-center text-primary/60 hover:bg-primary/5 hover:text-primary transition-all active:scale-90"
+              title="Próximo"
             >
-              <ChevronRight size={24} />
+              <ChevronRight size={20} className="md:size-24" />
             </button>
           </div>
-        </div>
+        </motion.div>
       </main>
 
       {/* Stats/Inspiration */}
@@ -1194,7 +1233,7 @@ export default function App() {
                       ))}
                       {getCalendarDays().map((day, idx) => {
                         const dateStr = day?.toISOString().split('T')[0];
-                        const isHoliday = dateStr && HOLIDAYS_2026.includes(dateStr);
+                        const isHoliday = dateStr && HOLIDAYS_2026[dateStr];
                         const dayTasks = tasks.filter(t => t.dueDate === dateStr);
                         const isToday = dateStr === new Date().toISOString().split('T')[0];
 
@@ -1215,7 +1254,9 @@ export default function App() {
                                 {day?.getDate()}
                               </span>
                               {isHoliday && (
-                                <span className="text-[8px] text-secondary font-black uppercase truncate px-1">Feriado</span>
+                                <span className="text-[7px] text-secondary font-black uppercase truncate px-1 max-w-[50px]" title={HOLIDAYS_2026[dateStr]}>
+                                  {HOLIDAYS_2026[dateStr].split(' ')[0]}
+                                </span>
                               )}
                             </div>
                             <div className="flex flex-col gap-1 overflow-y-auto max-h-[80px] custom-scrollbar">
@@ -1404,11 +1445,11 @@ export default function App() {
                               
                               <div className="text-right">
                                 {item.isBusiness ? (
-                                  <span className="text-[9px] font-black text-primary/60 uppercase tracking-widest bg-primary/5 px-2 py-1 rounded">Dia Útil</span>
+                                  <span className="text-[8px] font-black text-primary/40 uppercase tracking-[0.1em] bg-primary/5 px-2 py-0.5 rounded">Útil</span>
                                 ) : (
                                   <span className={cn(
-                                    "text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded",
-                                    item.reason === 'Início (D0)' ? "bg-stone-100 text-stone-400" : "bg-rose-50 text-rose-400"
+                                    "text-[8px] font-black uppercase tracking-[0.1em] px-2 py-0.5 rounded",
+                                    item.reason === 'Início (D0)' ? "bg-stone-100 text-stone-400" : "bg-rose-50 text-rose-500 shadow-sm shadow-rose-100/50"
                                   )}>
                                     {item.reason}
                                   </span>
@@ -1538,42 +1579,42 @@ export default function App() {
 
                     <div className="hidden md:block w-px bg-primary/10 h-full" />
 
-                    <div className="flex-1 flex flex-col min-h-[200px] md:min-h-0">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xs font-bold text-stone-500 uppercase tracking-widest">Histórico Simples</h3>
-                        {calcHistory.length > 0 && (
-                          <button 
-                            onClick={() => setCalcHistory([])}
-                            className="text-[10px] text-primary/60 hover:text-primary font-bold"
-                          >
-                            LIMPAR
-                          </button>
-                        )}
-                      </div>
-                      
-                      <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
-                        {calcHistory.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center h-full text-stone-300">
-                            <History size={32} strokeWidth={1} />
-                            <span className="text-[10px] uppercase tracking-widest mt-2">Vazio</span>
-                          </div>
-                        ) : (
-                          calcHistory.map((h) => (
-                            <div 
-                              key={h.id} 
-                              onClick={() => {
-                                setCalcExpression(h.result);
-                                setCalcDisplay(h.result);
-                              }}
-                              className="p-3 rounded-lg bg-primary/5 border border-transparent hover:border-primary/10 cursor-pointer transition-colors text-right group"
+                      <div className="flex-1 min-w-0 md:min-h-0">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-[10px] font-black text-primary/40 uppercase tracking-[0.2em]">Histórico Operacional</h3>
+                          {calcHistory.length > 0 && (
+                            <button 
+                              onClick={() => setCalcHistory([])}
+                              className="text-[9px] text-rose-400 hover:text-rose-600 font-black uppercase transition-colors"
                             >
-                              <div className="text-[10px] text-stone-400 font-mono mb-1">{h.expression}</div>
-                              <div className="text-primary font-display font-medium">{h.result}</div>
+                              Resetar
+                            </button>
+                          )}
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-1">
+                          {calcHistory.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-full py-8 text-stone-200">
+                              <History size={24} strokeWidth={1} />
+                              <span className="text-[9px] font-black uppercase tracking-widest mt-2">Sem registros</span>
                             </div>
-                          ))
-                        )}
+                          ) : (
+                            calcHistory.map((h) => (
+                              <div 
+                                key={h.id} 
+                                onClick={() => {
+                                  setCalcExpression(h.result);
+                                  setCalcDisplay(h.result);
+                                }}
+                                className="p-3 rounded-xl bg-primary/5 border border-primary/5 hover:border-primary/20 cursor-pointer transition-all text-right group hover:scale-[1.02]"
+                              >
+                                <div className="text-[9px] text-stone-400 font-mono mb-0.5">{h.expression}</div>
+                                <div className="text-sm text-primary font-display font-bold tabular-nums"> = {h.result}</div>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
-                    </div>
                   </>
                 ) : (
                   <div className="flex-1 flex flex-col gap-6 overflow-hidden">
@@ -1581,21 +1622,26 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-hidden">
                       {/* Inputs */}
                       <div className="space-y-4">
-                        <div className="flex justify-between items-center bg-primary/5 p-3 rounded-xl border border-primary/10">
-                          <div className="flex items-center gap-2">
-                            <Scale size={16} className="text-primary" />
-                            <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Usar Índices Reais (IPCA/SELIC)</span>
+                        <div className="flex justify-between items-center bg-primary/5 p-4 rounded-2xl border border-primary/10">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-background">
+                              <Scale size={20} />
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-primary block leading-tight">Índices Automáticos</span>
+                              <p className="text-[9px] text-stone-400 font-black uppercase tracking-tight">IPCA / SELIC em tempo real</p>
+                            </div>
                           </div>
                           <button 
                             onClick={() => setUseRealRates(!useRealRates)}
                             className={cn(
-                              "w-10 h-5 rounded-full transition-colors relative",
+                              "w-12 h-6 rounded-full transition-all duration-300 relative p-1",
                               useRealRates ? "bg-primary" : "bg-stone-300"
                             )}
                           >
                             <div className={cn(
-                              "absolute top-1 w-3 h-3 rounded-full bg-white transition-all",
-                              useRealRates ? "right-1" : "left-1"
+                              "w-4 h-4 rounded-full bg-white transition-all shadow-sm",
+                              useRealRates ? "translate-x-6" : "translate-x-0"
                             )} />
                           </button>
                         </div>
