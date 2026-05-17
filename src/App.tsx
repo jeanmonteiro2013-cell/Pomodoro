@@ -522,14 +522,30 @@ export default function App() {
   const fetchLegalRates = async (date: string) => {
     setIsFetchingRates(true);
     try {
-      const d = new Date(date);
-      const start = `01/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+      let startYear, startMonth;
+      if (date.includes('-')) {
+        const [y, m, d] = date.split('-');
+        startYear = y;
+        startMonth = m;
+      } else {
+        const d = new Date(date);
+        startYear = d.getFullYear();
+        startMonth = (d.getMonth() + 1).toString().padStart(2, '0');
+      }
+      
+      const start = `01/${startMonth}/${startYear}`;
       const today = new Date();
       // Use the last day of last month to ensure data existence if very recent
       const end = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
       
-      const response = await fetch(`/api/indices?dataInicial=${start}&dataFinal=${end}`);
-      const data = await response.json();
+      // Fetch directly from BCB API (CORS is supported)
+      const ipcaResponse = await fetch(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados?formato=json&dataInicial=${start}&dataFinal=${end}`);
+      const ipcaData = await ipcaResponse.json();
+
+      const selicResponse = await fetch(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.4390/dados?formato=json&dataInicial=${start}&dataFinal=${end}`);
+      const selicData = await selicResponse.json();
+
+      const data = { ipca: ipcaData, selic: selicData };
       
       if (!data.ipca || data.ipca.length === 0) {
         console.warn("No IPCA data found for this period.");
@@ -730,10 +746,15 @@ export default function App() {
     setIsActive(!isActive);
   };
 
-  const playSound = useCallback(() => {
+  const playSound = useCallback((type: 'focus' | 'short' | 'long') => {
     if (!soundEnabled) return;
-    const audioContent = "data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTv9Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8=";
-    const audio = new Audio(audioContent);
+    
+    let audioUrl = '';
+    if (type === 'focus') audioUrl = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+    else if (type === 'short') audioUrl = 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3';
+    else audioUrl = 'https://assets.mixkit.co/active_storage/sfx/2190/2190-preview.mp3';
+
+    const audio = new Audio(audioUrl);
     audio.play().catch(e => console.error("Audio play failed:", e));
   }, [soundEnabled]);
 
@@ -857,7 +878,7 @@ export default function App() {
       }, 1000);
     } else if (timeLeft === 0) {
       setIsActive(false);
-      playSound();
+      playSound(sessionType);
       
       const sessionLabel = sessionType === 'focus' ? 'Foco' : sessionType === 'short' ? 'Pausa' : 'Descanso';
       sendNotification(`Sessão de ${sessionLabel} finalizada!`, `Parabéns! Você completou sua sessão de ${sessionLabel}.`);
@@ -1252,14 +1273,34 @@ export default function App() {
                     
                     <div className="flex items-center gap-4">
                       <button 
-                        onClick={() => setSettings({ ...settings, [type]: Math.max(1, settings[type] - 1) })}
+                        onClick={() => setSettings({ ...settings, [type]: Math.max(1, Number(settings[type]) - 1) })}
                         className="w-8 h-8 rounded-lg bg-primary/5 border border-primary/10 flex items-center justify-center text-primary hove:bg-primary hover:text-white transition-all active:scale-95"
                       >
                         <Minus size={14} />
                       </button>
-                      <span className="w-6 text-center font-display font-bold text-lg text-primary">{settings[type]}</span>
+                      <input 
+                        type="number"
+                        min="1"
+                        max="120"
+                        value={settings[type] || ''}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (!isNaN(val)) {
+                            setSettings({ ...settings, [type]: Math.max(1, Math.min(120, val)) });
+                          } else if (e.target.value === '') {
+                            // Temporary allow empty state while typing
+                            setSettings({ ...settings, [type]: '' as any });
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!settings[type] || isNaN(Number(settings[type]))) {
+                            setSettings({ ...settings, [type]: 25 });
+                          }
+                        }}
+                        className="w-12 text-center font-display font-bold text-lg text-primary bg-transparent outline-none border-b border-transparent focus:border-primary/20 hover:border-primary/10 transition-colors"
+                      />
                       <button 
-                        onClick={() => setSettings({ ...settings, [type]: Math.min(120, settings[type] + 1) })}
+                        onClick={() => setSettings({ ...settings, [type]: Math.min(120, Number(settings[type]) + 1) })}
                         className="w-8 h-8 rounded-lg bg-primary/5 border border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all active:scale-95"
                       >
                         <Plus size={14} />
