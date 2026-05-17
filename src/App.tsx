@@ -45,7 +45,9 @@ import {
   ChevronRight,
   Scale,
   Clock,
-  Battery
+  Battery,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -96,6 +98,7 @@ interface Settings {
   short: number;
   long: number;
   notificationsEnabled: boolean;
+  theme: 'light' | 'dark';
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -103,6 +106,7 @@ const DEFAULT_SETTINGS: Settings = {
   short: 10,
   long: 20,
   notificationsEnabled: true,
+  theme: 'light',
 };
 
 // --- Holiday & Deadline Helpers ---
@@ -551,6 +555,13 @@ export default function App() {
     try {
       localStorage.setItem('zen_pomo_settings', JSON.stringify(settings));
     } catch (e) { console.error("Save settings error:", e); }
+
+    // Apply theme
+    if (settings.theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }, [settings]);
 
   // Persist history
@@ -614,8 +625,8 @@ export default function App() {
             <Scale size={20} />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-primary font-display font-black text-xl leading-none italic tracking-tighter">POMODORO</h1>
-            <p className="text-[8px] text-primary uppercase font-bold tracking-[0.2em] mt-0.5">ESTRATÉGICO</p>
+            <h1 className="text-primary font-display font-extrabold text-2xl leading-none tracking-tight">POMODORO</h1>
+            <p className="text-[9px] text-primary/70 uppercase font-bold tracking-[0.3em] mt-0.5">ESTRATÉGICO</p>
           </div>
         </motion.div>
 
@@ -734,7 +745,7 @@ export default function App() {
                 key={timeLeft}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="text-8xl font-display font-black text-primary tabular-nums tracking-tighter italic"
+                className="text-8xl font-display font-bold text-primary tabular-nums"
               >
                 {formatTime(timeLeft)}
               </motion.span>
@@ -872,7 +883,31 @@ export default function App() {
 
                 <div className="flex items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/5">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white">
+                    <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-[var(--color-background)]">
+                      {settings.theme === 'light' ? <Sun size={20} /> : <Moon size={20} />}
+                    </div>
+                    <div>
+                      <p className="font-bold text-primary text-sm">Tema do App</p>
+                      <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black mt-1">{settings.theme === 'light' ? 'Claro' : 'Escuro'}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setSettings({ ...settings, theme: settings.theme === 'light' ? 'dark' : 'light' })}
+                    className={cn(
+                      "w-12 h-6 rounded-full p-1 transition-colors duration-300",
+                      settings.theme === 'dark' ? "bg-primary" : "bg-stone-200"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 bg-white rounded-full transition-transform duration-300",
+                      settings.theme === 'dark' ? "translate-x-6" : "translate-x-0"
+                    )} />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/5">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-[var(--color-background)]">
                       <Volume2 size={20} />
                     </div>
                     <div>
@@ -984,9 +1019,9 @@ export default function App() {
               {/* Task List */}
               <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
                 {tasks.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-stone-300">
+                  <div className="flex flex-col items-center justify-center py-12 text-stone-300/50">
                     <ListTodo size={48} strokeWidth={1} />
-                    <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em]">Sem pendências registradas</p>
+                    <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] opacity-50">Sem pendências registradas</p>
                   </div>
                 ) : (
                   tasks.map((task) => (
@@ -996,7 +1031,7 @@ export default function App() {
                       animate={{ opacity: 1, y: 0 }}
                       className={cn(
                         "p-4 rounded-xl flex items-center justify-between border transition-all duration-300 shadow-sm",
-                        activeTaskId === task.id ? "bg-primary/5 border-primary/20" : "bg-white border-primary/5"
+                        activeTaskId === task.id ? "bg-primary/5 border-primary/20" : "bg-card border-primary/5"
                       )}
                     >
                       <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -1004,7 +1039,7 @@ export default function App() {
                           onClick={() => toggleTask(task.id)}
                           className={cn(
                             "w-6 h-6 rounded-lg border flex items-center justify-center transition-all focus:outline-none",
-                            task.completed ? "bg-primary border-primary text-white" : "bg-white border-primary/10 text-stone-300"
+                            task.completed ? "bg-primary border-primary text-background" : "bg-card border-primary/10 text-stone-300"
                           )}
                         >
                           {task.completed && <CheckCircle2 size={14} />}

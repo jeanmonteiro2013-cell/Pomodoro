@@ -1,20 +1,40 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@300;500;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Outfit", sans-serif;
-  
-  --color-primary: #0A2417;   /* Deep Green */
-  --color-secondary: #B8860B; /* Dark Goldenrod / Ochre */
-  --color-background: #FDFBF7; /* Cream/Off-white */
-  --color-accent: #1E3D2F;
+  --font-display: "Plus Jakarta Sans", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-background: var(--background);
+  --color-card: var(--card);
+  --color-text: var(--text);
+  --color-border: var(--border);
 }
 
 @layer base {
+  :root {
+    --primary: #0A2417;
+    --secondary: #B8860B;
+    --background: #FDFBF7;
+    --card: #FFFFFF;
+    --text: #0A2417;
+    --border: rgba(10, 36, 23, 0.1);
+  }
+
+  .dark {
+    --primary: #52B788;
+    --secondary: #D4AF37;
+    --background: #0F172A;
+    --card: #1E293B;
+    --text: #F8FAFC;
+    --border: rgba(248, 250, 252, 0.1);
+  }
+
   body {
-    @apply bg-[var(--color-background)] text-[var(--color-primary)] font-sans selection:bg-secondary/20 transition-colors duration-500;
-    -webkit-font-smoothing: antialiased;
+    @apply bg-background text-text font-sans antialiased transition-colors duration-500;
   }
 }
 
@@ -25,7 +45,7 @@
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--color-primary);
+  background: var(--primary);
   opacity: 0.1;
   border-radius: 10px;
 }
