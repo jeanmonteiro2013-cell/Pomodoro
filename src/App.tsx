@@ -102,6 +102,13 @@ interface Settings {
   theme: 'light' | 'dark';
 }
 
+interface DeadlineDayDetail {
+  date: string;
+  isBusiness: boolean;
+  reason?: string;
+  count?: number;
+}
+
 const DEFAULT_SETTINGS: Settings = {
   focus: 60,
   short: 10,
@@ -130,12 +137,12 @@ const HOLIDAYS_2026 = [
   '2026-12-25', // Natal
 ];
 
-function isBusinessDay(date: Date) {
+function getDayStatus(date: Date): { isBusiness: boolean; reason?: string } {
   const day = date.getDay();
-  if (day === 0 || day === 6) return false;
+  if (day === 0 || day === 6) return { isBusiness: false, reason: 'Final de Semana' };
   
   const dateStr = date.toISOString().split('T')[0];
-  if (HOLIDAYS_2026.includes(dateStr)) return false;
+  if (HOLIDAYS_2026.includes(dateStr)) return { isBusiness: false, reason: 'Feriado' };
   
   // Recesso Forense (Dec 20 - Jan 20)
   const month = date.getMonth();
@@ -144,28 +151,59 @@ function isBusinessDay(date: Date) {
     (month === 11 && dayOfMonth >= 20) || 
     (month === 0 && dayOfMonth <= 20)
   ) {
-    return false;
+    return { isBusiness: false, reason: 'Recesso Forense (Art. 220 CPC)' };
   }
   
-  return true;
+  return { isBusiness: true };
 }
 
-function calculateDeadline(startDate: Date, duration: number) {
+function calculateDeadlineDetailed(startDate: Date, duration: number) {
+  const timeline: DeadlineDayDetail[] = [];
   let count = 0;
   let current = new Date(startDate);
   
+  // Initial date info (protocolo/publicação)
+  timeline.push({
+    date: current.toISOString().split('T')[0],
+    isBusiness: false,
+    reason: 'Início (D0)'
+  });
+
   // Deadlines start counting the next business day
+  current = new Date(current);
   current.setDate(current.getDate() + 1);
   
-  while (count < duration) {
-    if (isBusinessDay(current)) {
+  const maxSafety = 500; // Prevent infinite loops
+  let iterations = 0;
+
+  while (count < duration && iterations < maxSafety) {
+    iterations++;
+    const status = getDayStatus(current);
+    
+    if (status.isBusiness) {
       count++;
+      timeline.push({
+        date: current.toISOString().split('T')[0],
+        isBusiness: true,
+        count: count
+      });
+    } else {
+      timeline.push({
+        date: current.toISOString().split('T')[0],
+        isBusiness: false,
+        reason: status.reason
+      });
     }
+    
     if (count < duration) {
       current.setDate(current.getDate() + 1);
     }
   }
-  return current;
+  
+  return {
+    finalDate: current,
+    timeline
+  };
 }
 
 function generateId() {
@@ -243,6 +281,7 @@ export default function App() {
   const [deadlineStart, setDeadlineStart] = useState(new Date().toISOString().split('T')[0]);
   const [deadlineDuration, setDeadlineDuration] = useState('15');
   const [deadlineResult, setDeadlineResult] = useState<Date | null>(null);
+  const [deadlineTimeline, setDeadlineTimeline] = useState<DeadlineDayDetail[]>([]);
 
   const requestNotificationPermission = useCallback(async () => {
     if (!("Notification" in window)) return;
@@ -267,8 +306,9 @@ export default function App() {
   // --- Handlers ---
 
   const handleCalculateDeadline = () => {
-    const res = calculateDeadline(new Date(deadlineStart), Number(deadlineDuration));
-    setDeadlineResult(res);
+    const { finalDate, timeline } = calculateDeadlineDetailed(new Date(deadlineStart), Number(deadlineDuration));
+    setDeadlineResult(finalDate);
+    setDeadlineTimeline(timeline);
   };
 
   const getCalendarDays = () => {
@@ -1313,19 +1353,72 @@ export default function App() {
                   </button>
 
                   {deadlineResult && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center"
-                    >
-                      <div className="text-[10px] text-stone-500 uppercase font-black tracking-widest mb-1">Vencimento Estimado</div>
-                      <div className="text-2xl md:text-3xl font-display font-bold text-secondary">
-                        {deadlineResult.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    <div className="space-y-6">
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center"
+                      >
+                        <div className="text-[10px] text-stone-500 uppercase font-black tracking-widest mb-1">Vencimento Estimado</div>
+                        <div className="text-2xl md:text-3xl font-display font-bold text-secondary">
+                          {deadlineResult.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                        </div>
+                        <div className="text-[10px] text-primary font-bold mt-1 uppercase">
+                          {deadlineResult.toLocaleDateString('pt-BR', { weekday: 'long' })}
+                        </div>
+                      </motion.div>
+
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-end px-2">
+                          <div>
+                            <h4 className="text-[10px] font-black text-primary/40 uppercase tracking-[0.2em]">Memória de Cálculo</h4>
+                            <p className="text-[9px] text-stone-400 font-bold mt-0.5">Confira o cronograma detalhado abaixo</p>
+                          </div>
+                          <div className="text-[9px] font-black text-primary/60 uppercase">
+                            {deadlineTimeline.filter(d => d.isBusiness).length} dias úteis
+                          </div>
+                        </div>
+
+                        <div className="bg-card border border-primary/5 rounded-2xl overflow-hidden divide-y divide-primary/5 shadow-inner bg-stone-50/30">
+                          {deadlineTimeline.map((item, idx) => (
+                            <div key={idx} className={cn(
+                              "px-4 py-3 flex items-center justify-between transition-colors",
+                              item.isBusiness ? "bg-white" : "bg-primary/[0.02]"
+                            )}>
+                              <div className="flex items-center gap-3">
+                                <div className={cn(
+                                  "w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black",
+                                  item.isBusiness ? "bg-primary text-background" : "bg-stone-200 text-stone-400"
+                                )}>
+                                  {item.count || idx}
+                                </div>
+                                <div>
+                                  <div className="text-xs font-bold text-primary">
+                                    {new Date(item.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                  </div>
+                                  <div className="text-[9px] text-stone-400 font-bold uppercase">
+                                    {new Date(item.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })}
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="text-right">
+                                {item.isBusiness ? (
+                                  <span className="text-[9px] font-black text-primary/60 uppercase tracking-widest bg-primary/5 px-2 py-1 rounded">Dia Útil</span>
+                                ) : (
+                                  <span className={cn(
+                                    "text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded",
+                                    item.reason === 'Início (D0)' ? "bg-stone-100 text-stone-400" : "bg-rose-50 text-rose-400"
+                                  )}>
+                                    {item.reason}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div className="text-[10px] text-primary font-bold mt-1 uppercase">
-                        {deadlineResult.toLocaleDateString('pt-BR', { weekday: 'long' })}
-                      </div>
-                    </motion.div>
+                    </div>
                   )}
                 </div>
 
