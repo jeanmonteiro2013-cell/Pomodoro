@@ -361,6 +361,45 @@ export default function App() {
   const [currentCalculationId, setCurrentCalculationId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [calculationTitle, setCalculationTitle] = useState('');
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [showIOSInstallGuide, setShowIOSInstallGuide] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
+    setIsIOS(isIosDevice);
+    
+    // @ts-ignore
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    setIsStandalone(isPWA);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (isIOS && !isStandalone) {
+      setShowIOSInstallGuide(true);
+      return;
+    }
+
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   // Local sync prevention (to avoid feedback loops)
   const isInitialLoad = useRef(true);
@@ -1002,6 +1041,16 @@ export default function App() {
         </motion.div>
 
         <div className="flex items-center gap-1 md:gap-2">
+          {(deferredPrompt || (isIOS && !isStandalone)) && (
+            <button 
+              onClick={handleInstallClick}
+              className="flex items-center gap-2 p-1 md:p-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all group mr-2"
+              title="Instalar App"
+            >
+              <Download size={16} />
+              <span className="hidden md:block text-[10px] font-black uppercase tracking-widest">Instalar App</span>
+            </button>
+          )}
           {user ? (
             <button 
               onClick={logout}
@@ -2429,6 +2478,61 @@ export default function App() {
               </div>
             </motion.div>
           </>
+        )}
+
+        {/* iOS Install Guide Dialog */}
+        {showIOSInstallGuide && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 w-full max-w-sm border border-primary/10 shadow-2xl relative"
+            >
+              <button 
+                onClick={() => setShowIOSInstallGuide(false)}
+                className="absolute right-4 top-4 text-stone-400 hover:text-stone-800 transition-colors"
+              >
+                <XIcon size={20} />
+              </button>
+              
+              <div className="w-12 h-12 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mb-4 mx-auto">
+                <Download size={24} />
+              </div>
+              
+              <h2 className="text-xl font-bold text-center text-primary mb-2">Instalar no iOS</h2>
+              <p className="text-sm text-stone-500 text-center mb-6">
+                Para instalar o Pomodoro no seu iPhone ou iPad, siga os passos abaixo:
+              </p>
+              
+              <ol className="space-y-4 text-sm text-stone-700">
+                <li className="flex gap-3">
+                  <div className="w-6 h-6 rounded-full bg-primary/5 border border-primary/20 flex items-center justify-center font-bold text-xs shrink-0 text-primary">1</div>
+                  <p>Toque no ícone de <strong>Compartilhar</strong> na barra inferior do Safari.</p>
+                </li>
+                <li className="flex gap-3">
+                  <div className="w-6 h-6 rounded-full bg-primary/5 border border-primary/20 flex items-center justify-center font-bold text-xs shrink-0 text-primary">2</div>
+                  <p>Role para baixo e toque em <strong>Adicionar à Tela de Início</strong>.</p>
+                </li>
+                <li className="flex gap-3">
+                  <div className="w-6 h-6 rounded-full bg-primary/5 border border-primary/20 flex items-center justify-center font-bold text-xs shrink-0 text-primary">3</div>
+                  <p>Toque em <strong>Adicionar</strong> no canto superior direito.</p>
+                </li>
+              </ol>
+              
+              <button 
+                onClick={() => setShowIOSInstallGuide(false)}
+                className="w-full py-3 mt-8 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-bold transition-colors"
+              >
+                Entendi
+              </button>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
