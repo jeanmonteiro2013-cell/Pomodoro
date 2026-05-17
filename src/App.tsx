@@ -47,7 +47,8 @@ import {
   Clock,
   Battery,
   Sun,
-  Moon
+  Moon,
+  Bell
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -615,75 +616,54 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 overflow-hidden safe-area-inset">
-      <header className="fixed top-0 left-0 w-full p-6 flex justify-between items-center z-10">
+      <header className="fixed top-0 left-0 w-full p-4 md:p-6 flex justify-between items-center z-10 bg-background/50 backdrop-blur-sm md:bg-transparent">
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="flex items-center gap-3"
+          className="flex items-center gap-2 md:gap-3"
         >
-          <div className="bg-primary p-2 rounded-xl text-white">
+          <div className="bg-primary p-2 rounded-xl text-background">
             <Scale size={20} />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-primary font-display font-extrabold text-2xl leading-none tracking-tight">POMODORO</h1>
-            <p className="text-[9px] text-primary/70 uppercase font-bold tracking-[0.3em] mt-0.5">ESTRATÉGICO</p>
+            <h1 className="text-primary font-display font-extrabold text-lg md:text-2xl leading-none tracking-tight">POMODORO</h1>
+            <p className="text-[7px] md:text-[9px] text-primary/70 uppercase font-bold tracking-[0.3em] mt-0.5">ESTRATÉGICO</p>
           </div>
         </motion.div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 md:gap-2">
           <button 
             onClick={() => setShowDeadlines(true)}
             className="p-2 rounded-xl text-primary hover:bg-primary/5 transition-colors"
             title="Contador de Prazos"
           >
-            <Scale size={24} />
-          </button>
-          <button 
-            onClick={() => setShowCalendar(true)}
-            className="p-2 rounded-xl text-primary hover:bg-primary/5 transition-colors"
-            title="Calendário"
-          >
-            <Calendar size={24} />
+            <Scale size={20} className="md:w-6 md:h-6" />
           </button>
           <button 
             onClick={() => setShowCalculator(true)}
             className="p-2 rounded-xl text-primary hover:bg-primary/5 transition-colors"
             title="Calculadora"
           >
-            <Calculator size={24} />
+            <Calculator size={20} className="md:w-6 md:h-6" />
           </button>
           <button 
             onClick={() => setShowTasks(true)}
             className="p-2 rounded-xl text-primary hover:bg-primary/5 transition-colors relative"
             title="Tarefas"
           >
-            <ListTodo size={24} />
+            <ListTodo size={20} className="md:w-6 md:h-6" />
             {tasks.filter(t => !t.completed).length > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-secondary text-white text-[10px] flex items-center justify-center rounded-full font-bold shadow-sm">
+              <span className="absolute top-1 right-1 w-3 h-3 md:w-4 md:h-4 bg-secondary text-white text-[8px] md:text-[10px] flex items-center justify-center rounded-full font-bold shadow-sm">
                 {tasks.filter(t => !t.completed).length}
               </span>
             )}
-          </button>
-          <button 
-            onClick={() => setShowHistory(true)}
-            className="p-2 rounded-xl text-primary hover:bg-primary/5 transition-colors"
-            title="Histórico de Sessões"
-          >
-            <History size={24} />
-          </button>
-          <button 
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className="p-2 rounded-xl text-primary hover:bg-primary/5 transition-colors"
-            title={soundEnabled ? "Desativar Som" : "Ativar Som"}
-          >
-            {soundEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}
           </button>
           <button 
             onClick={() => setShowSettings(true)}
             className="p-2 rounded-xl text-primary hover:bg-primary/5 transition-colors"
             title="Configurações"
           >
-            <Settings2 size={24} />
+            <Settings2 size={20} className="md:w-6 md:h-6" />
           </button>
         </div>
       </header>
@@ -816,17 +796,20 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowSettings(false)}
-              className="fixed inset-0 bg-black/60 z-20"
+              className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm"
             />
             <motion.div 
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 w-full bg-[var(--color-background)] border-t border-primary/10 rounded-t-[32px] p-8 z-30 pb-safe max-h-[85vh] overflow-y-auto shadow-2xl"
+              transition={{ type: "spring", damping: 32, stiffness: 300 }}
+              className="fixed bottom-0 left-0 w-full bg-[var(--color-background)] border-t border-primary/10 rounded-t-[32px] z-50 pb-safe max-h-[92vh] flex flex-col shadow-2xl"
             >
-              <div className="flex justify-between items-center mb-8">
-                <h2 className="font-display font-medium text-2xl text-primary">Configurações</h2>
+              <div className="flex justify-between items-center p-8 pb-4 bg-background/80 backdrop-blur-md sticky top-0 z-10 rounded-t-[32px]">
+                <div>
+                  <h2 className="font-display font-bold text-2xl text-primary">Configurações</h2>
+                  <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mt-1">Personalize sua experiência</p>
+                </div>
                 <button 
                   onClick={() => setShowSettings(false)}
                   className="p-2 bg-primary/5 rounded-full text-primary hover:bg-primary/10 transition-colors"
@@ -835,13 +818,13 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="space-y-8">
+              <div className="flex-1 overflow-y-auto p-8 pt-2 space-y-8 custom-scrollbar">
                 {(['focus', 'short', 'long'] as SessionType[]).map((type) => (
                   <div key={type} className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className={cn(
                         "w-10 h-10 rounded-xl flex items-center justify-center border",
-                        type === 'focus' ? 'bg-primary border-primary text-white' : type === 'short' ? 'bg-secondary border-secondary text-white' : 'bg-primary/10 border-primary/20 text-primary'
+                        type === 'focus' ? 'bg-primary border-primary text-background' : type === 'short' ? 'bg-secondary border-secondary text-white' : 'bg-primary/10 border-primary/20 text-primary'
                       )}>
                         {type === 'focus' ? (
                           <Brain className="w-5 h-5" />
@@ -853,29 +836,23 @@ export default function App() {
                         <p className="font-bold text-primary capitalize text-sm">
                           {type === 'focus' ? 'Foco' : type === 'short' ? 'Pausa Curta' : 'Descanso'}
                         </p>
-                        <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black mt-1">Minutos por Sessão</p>
+                        <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black mt-1">Minutos</p>
                       </div>
                     </div>
                     
                     <div className="flex items-center gap-4">
                       <button 
-                        onClick={() => {
-                          const newVal = Math.max(1, settings[type] - 1);
-                          setSettings({ ...settings, [type]: newVal });
-                        }}
-                        className="w-10 h-10 rounded-lg bg-primary/5 border border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all"
+                        onClick={() => setSettings({ ...settings, [type]: Math.max(1, settings[type] - 1) })}
+                        className="w-8 h-8 rounded-lg bg-primary/5 border border-primary/10 flex items-center justify-center text-primary hove:bg-primary hover:text-white transition-all active:scale-95"
                       >
-                        <Minus size={16} />
+                        <Minus size={14} />
                       </button>
-                      <span className="w-8 text-center font-display font-black text-xl text-primary italic">{settings[type]}</span>
+                      <span className="w-6 text-center font-display font-bold text-lg text-primary">{settings[type]}</span>
                       <button 
-                        onClick={() => {
-                          const newVal = Math.min(60, settings[type] + 1);
-                          setSettings({ ...settings, [type]: newVal });
-                        }}
-                        className="w-10 h-10 rounded-lg bg-primary/5 border border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all"
+                        onClick={() => setSettings({ ...settings, [type]: Math.min(120, settings[type] + 1) })}
+                        className="w-8 h-8 rounded-lg bg-primary/5 border border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all active:scale-95"
                       >
-                        <Plus size={16} />
+                        <Plus size={14} />
                       </button>
                     </div>
                   </div>
@@ -883,7 +860,7 @@ export default function App() {
 
                 <div className="flex items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/5">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-[var(--color-background)]">
+                    <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-background">
                       {settings.theme === 'light' ? <Sun size={20} /> : <Moon size={20} />}
                     </div>
                     <div>
@@ -895,7 +872,7 @@ export default function App() {
                     onClick={() => setSettings({ ...settings, theme: settings.theme === 'light' ? 'dark' : 'light' })}
                     className={cn(
                       "w-12 h-6 rounded-full p-1 transition-colors duration-300",
-                      settings.theme === 'dark' ? "bg-primary" : "bg-stone-200"
+                      settings.theme === 'dark' ? "bg-primary" : "bg-stone-300/30"
                     )}
                   >
                     <div className={cn(
@@ -907,19 +884,19 @@ export default function App() {
 
                 <div className="flex items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/5">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-[var(--color-background)]">
-                      <Volume2 size={20} />
+                    <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-background">
+                      <Bell size={20} />
                     </div>
                     <div>
-                      <p className="font-bold text-primary text-sm">Notificações Push</p>
-                      <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black mt-1">Alertas de Sessão e Prazos</p>
+                      <p className="font-bold text-primary text-sm">Notificações</p>
+                      <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black mt-1">{settings.notificationsEnabled ? 'Ativadas' : 'Desativadas'}</p>
                     </div>
                   </div>
                   <button 
                     onClick={() => setSettings({ ...settings, notificationsEnabled: !settings.notificationsEnabled })}
                     className={cn(
                       "w-12 h-6 rounded-full p-1 transition-colors duration-300",
-                      settings.notificationsEnabled ? "bg-primary" : "bg-stone-200"
+                      settings.notificationsEnabled ? "bg-primary" : "bg-stone-300/30"
                     )}
                   >
                     <div className={cn(
@@ -931,9 +908,9 @@ export default function App() {
 
                 <button 
                   onClick={() => setShowSettings(false)}
-                  className="w-full py-4 bg-primary text-white rounded-xl font-black uppercase tracking-widest mt-4 shadow-lg shadow-primary/20 active:scale-[0.98] transition-transform"
+                  className="w-full py-4 bg-primary text-background rounded-2xl font-bold uppercase tracking-widest mt-4 shadow-lg active:scale-[0.98] transition-transform"
                 >
-                  SALVAR CONFIGURAÇÕES
+                  Concluir
                 </button>
               </div>
             </motion.div>
@@ -955,13 +932,13 @@ export default function App() {
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 w-full bg-[var(--color-background)] border-t border-primary/10 rounded-t-[32px] p-8 z-30 pb-safe max-h-[85vh] flex flex-col shadow-2xl"
+              transition={{ type: "spring", damping: 32, stiffness: 300 }}
+              className="fixed bottom-0 left-0 w-full bg-[var(--color-background)] border-t border-primary/10 rounded-t-[32px] z-50 pb-safe max-h-[92vh] flex flex-col shadow-2xl"
             >
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex justify-between items-center p-8 pb-4 bg-background/80 backdrop-blur-md sticky top-0 z-10 rounded-t-[32px]">
                 <div>
-                  <h2 className="font-display font-medium text-2xl text-primary">Diretório de Tarefas</h2>
-                  <p className="text-[10px] text-stone-500 uppercase tracking-widest mt-1">Gestão de Workflow</p>
+                  <h2 className="font-display font-bold text-2xl text-primary">Diretório de Tarefas</h2>
+                  <p className="text-[10px] text-stone-500 uppercase tracking-widest font-bold mt-1">Gestão de Workflow Jurídico</p>
                 </div>
                 <button 
                   onClick={() => setShowTasks(false)}
@@ -971,128 +948,130 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="bg-white border border-primary/10 rounded-2xl p-6 mb-8 shadow-sm">
-                <div className="flex flex-col gap-4">
-                  <div className="flex gap-4">
-                    <input 
-                      type="text"
-                      value={newTaskTitle}
-                      onChange={(e) => setNewTaskTitle(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && addTask()}
-                      placeholder="Identificar nova demanda..."
-                      className="flex-1 bg-transparent border-b border-primary/10 text-primary py-2 focus:border-primary outline-none transition-colors font-medium placeholder:text-stone-300"
-                    />
-                    <button 
-                      onClick={addTask}
-                      className="p-2 bg-primary text-white rounded-lg hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
-                    >
-                      <Plus size={24} />
-                    </button>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] text-stone-500 uppercase font-black tracking-widest">Prazo Fatal</label>
+              <div className="flex-1 overflow-y-auto p-8 pt-2 space-y-6 custom-scrollbar">
+                {/* Task modal content ... */}
+                <div className="bg-card border border-primary/10 rounded-2xl p-6 shadow-sm">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex gap-4">
                       <input 
-                        type="date"
-                        value={taskDueDate}
-                        onChange={(e) => setTaskDueDate(e.target.value)}
-                        className="bg-primary/5 border border-primary/5 rounded-lg px-3 py-2 text-primary text-xs outline-none focus:border-primary/50 font-bold"
+                        type="text"
+                        value={newTaskTitle}
+                        onChange={(e) => setNewTaskTitle(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                        placeholder="Identificar nova demanda..."
+                        className="flex-1 bg-transparent border-b border-primary/10 text-primary py-2 focus:border-primary outline-none transition-colors font-medium placeholder:text-stone-300"
                       />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] text-stone-500 uppercase font-black tracking-widest">Gravidade</label>
-                      <select 
-                        value={taskPriority}
-                        onChange={(e) => setTaskPriority(e.target.value as any)}
-                        className="bg-primary/5 border border-primary/5 rounded-lg px-3 py-2 text-primary text-xs outline-none focus:border-primary/50 font-bold"
+                      <button 
+                        onClick={addTask}
+                        className="p-2 bg-primary text-background rounded-lg hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
                       >
-                        <option value="low">Baixa</option>
-                        <option value="medium">Média</option>
-                        <option value="high">Alta</option>
-                      </select>
+                        <Plus size={24} />
+                      </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] text-stone-500 uppercase font-black tracking-widest">Prazo Fatal</label>
+                        <input 
+                          type="date"
+                          value={taskDueDate}
+                          onChange={(e) => setTaskDueDate(e.target.value)}
+                          className="bg-primary/5 border border-primary/10 rounded-lg px-3 py-2 text-primary text-xs outline-none focus:border-primary font-bold"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] text-stone-500 uppercase font-black tracking-widest">Gravidade</label>
+                        <select 
+                          value={taskPriority}
+                          onChange={(e) => setTaskPriority(e.target.value as any)}
+                          className="bg-primary/5 border border-primary/10 rounded-lg px-3 py-2 text-primary text-xs outline-none focus:border-primary font-bold"
+                        >
+                          <option value="low">Baixa</option>
+                          <option value="medium">Média</option>
+                          <option value="high">Alta</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Task List */}
-              <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
-                {tasks.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-stone-300/50">
-                    <ListTodo size={48} strokeWidth={1} />
-                    <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] opacity-50">Sem pendências registradas</p>
-                  </div>
-                ) : (
-                  tasks.map((task) => (
-                    <motion.div 
-                      key={task.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={cn(
-                        "p-4 rounded-xl flex items-center justify-between border transition-all duration-300 shadow-sm",
-                        activeTaskId === task.id ? "bg-primary/5 border-primary/20" : "bg-card border-primary/5"
-                      )}
-                    >
-                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <button 
-                          onClick={() => toggleTask(task.id)}
-                          className={cn(
-                            "w-6 h-6 rounded-lg border flex items-center justify-center transition-all focus:outline-none",
-                            task.completed ? "bg-primary border-primary text-background" : "bg-card border-primary/10 text-stone-300"
-                          )}
-                        >
-                          {task.completed && <CheckCircle2 size={14} />}
-                        </button>
-                        <div 
-                          className="flex-1 min-w-0 cursor-pointer"
-                          onClick={() => !task.completed && setActiveTaskId(task.id === activeTaskId ? null : task.id)}
-                        >
-                          <p className={cn(
-                            "text-sm font-bold truncate",
-                            task.completed ? "text-stone-300 line-through font-normal" : "text-primary"
-                          )}>
-                            {task.title}
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {task.dueDate && (
-                              <span className="text-[9px] text-stone-400 font-black uppercase tracking-tight flex items-center gap-1">
-                                <Calendar size={8} /> {new Date(task.dueDate).toLocaleDateString('pt-BR')}
-                              </span>
-                            )}
-                            <span className={cn(
-                              "text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded",
-                              task.priority === 'high' ? "bg-rose-50 text-rose-600" :
-                              task.priority === 'medium' ? "bg-amber-50 text-amber-600" :
-                              "bg-primary/10 text-primary/60"
-                            )}>
-                              {task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {!task.completed && (
+                <div className="space-y-3">
+                  {tasks.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-stone-300/50">
+                      <ListTodo size={48} strokeWidth={1} />
+                      <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] opacity-50">Sem pendências registradas</p>
+                    </div>
+                  ) : (
+                    tasks.map((task) => (
+                      <motion.div 
+                        key={task.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={cn(
+                          "p-4 rounded-xl flex items-center justify-between border transition-all duration-300 shadow-sm",
+                          activeTaskId === task.id ? "bg-primary/5 border-primary/20" : "bg-card border-primary/5"
+                        )}
+                      >
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
                           <button 
-                            onClick={() => setActiveTaskId(task.id === activeTaskId ? null : task.id)}
+                            onClick={() => toggleTask(task.id)}
                             className={cn(
-                              "text-[10px] font-black px-3 py-1.5 rounded-xl transition-all uppercase tracking-widest",
-                              activeTaskId === task.id ? "bg-primary text-white shadow-lg shadow-primary/20" : "text-primary/60 hover:text-primary hover:bg-primary/5"
+                              "w-6 h-6 rounded-lg border flex items-center justify-center transition-all focus:outline-none",
+                              task.completed ? "bg-primary border-primary text-background" : "bg-card border-primary/10 text-stone-300"
                             )}
                           >
-                            {activeTaskId === task.id ? 'EM FOCO' : 'FOCAR'}
+                            {task.completed && <CheckCircle2 size={14} />}
                           </button>
-                        )}
-                        <button 
-                          onClick={() => deleteTask(task.id)}
-                          className="p-2 text-stone-300 hover:text-rose-500 transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </motion.div>
-                  ))
-                )}
+                          <div 
+                            className="flex-1 min-w-0 cursor-pointer"
+                            onClick={() => !task.completed && setActiveTaskId(task.id === activeTaskId ? null : task.id)}
+                          >
+                            <p className={cn(
+                              "text-sm font-bold truncate",
+                              task.completed ? "text-stone-300 line-through font-normal" : "text-primary"
+                            )}>
+                              {task.title}
+                            </p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {task.dueDate && (
+                                <span className="text-[9px] text-stone-400 font-bold uppercase tracking-tight flex items-center gap-1">
+                                  <Calendar size={8} /> {new Date(task.dueDate).toLocaleDateString('pt-BR')}
+                                </span>
+                              )}
+                              <span className={cn(
+                                "text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded",
+                                task.priority === 'high' ? "bg-rose-50 text-rose-600" :
+                                task.priority === 'medium' ? "bg-amber-50 text-amber-600" :
+                                "bg-primary/10 text-primary/60"
+                              )}>
+                                {task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!task.completed && (
+                            <button 
+                              onClick={() => setActiveTaskId(task.id === activeTaskId ? null : task.id)}
+                              className={cn(
+                                "text-[10px] font-bold px-3 py-1.5 rounded-xl transition-all uppercase",
+                                activeTaskId === task.id ? "bg-primary text-background shadow-lg" : "text-primary/60 hover:text-primary hover:bg-primary/5"
+                              )}
+                            >
+                              {activeTaskId === task.id ? 'FOCO' : 'FOCAR'}
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => deleteTask(task.id)}
+                            className="p-2 text-stone-300 hover:text-rose-500 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </motion.div>
+                    ))
+                  )}
+                </div>
               </div>
             </motion.div>
           </>
@@ -1285,13 +1264,13 @@ export default function App() {
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 w-full bg-[var(--color-background)] border-t border-primary/10 rounded-t-[32px] p-8 z-30 pb-safe max-h-[90vh] flex flex-col shadow-2xl"
+              transition={{ type: "spring", damping: 32, stiffness: 300 }}
+              className="fixed bottom-0 left-0 w-full bg-[var(--color-background)] border-t border-primary/10 rounded-t-[32px] z-50 pb-safe max-h-[95vh] flex flex-col shadow-2xl"
             >
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex justify-between items-center p-6 pb-4 bg-background/80 backdrop-blur-sm sticky top-0 z-10 rounded-t-[32px]">
                 <div>
-                  <h2 className="font-display font-medium text-2xl text-primary">Contador de Prazos</h2>
-                  <p className="text-[10px] text-stone-500 uppercase tracking-widest mt-1">Legislação CPC/2015</p>
+                  <h2 className="font-display font-bold text-2xl text-primary">Contador de Prazos</h2>
+                  <p className="text-[10px] text-stone-500 uppercase tracking-widest mt-1">CPC/2015 - Dias Úteis</p>
                 </div>
                 <button 
                   onClick={() => setShowDeadlines(false)}
@@ -1301,26 +1280,25 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="flex-1 flex flex-col gap-6 overflow-hidden">
-                <div className="bg-white/50 border border-primary/10 rounded-2xl p-6 space-y-6 shadow-sm">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
+              <div className="flex-1 overflow-y-auto p-6 pt-2 space-y-6 custom-scrollbar">
+                <div className="bg-white border border-primary/10 rounded-2xl p-6 space-y-6 shadow-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
                       <label className="text-[10px] text-stone-500 uppercase font-black tracking-widest">Início do Prazo</label>
                       <input 
                         type="date"
                         value={deadlineStart}
                         onChange={(e) => setDeadlineStart(e.target.value)}
-                        className="w-full bg-white border border-primary/10 rounded-xl px-4 py-3 text-primary outline-none focus:border-primary/50"
+                        className="w-full bg-primary/5 border border-primary/10 rounded-xl px-4 py-3 text-primary outline-none focus:border-primary/50 text-sm"
                       />
-                      <p className="text-[8px] text-stone-400 font-bold uppercase">A contagem inicia no 1º dia útil seguinte</p>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <label className="text-[10px] text-stone-500 uppercase font-black tracking-widest">Duração (Dias Úteis)</label>
                       <input 
                         type="number"
                         value={deadlineDuration}
                         onChange={(e) => setDeadlineDuration(e.target.value)}
-                        className="w-full bg-white border border-primary/10 rounded-xl px-4 py-3 text-primary outline-none focus:border-primary/50 font-bold"
+                        className="w-full bg-primary/5 border border-primary/10 rounded-xl px-4 py-3 text-primary outline-none focus:border-primary/50 font-bold text-sm"
                         placeholder="Ex: 15"
                       />
                     </div>
@@ -1328,7 +1306,7 @@ export default function App() {
 
                   <button 
                     onClick={handleCalculateDeadline}
-                    className="w-full py-4 bg-primary text-white rounded-xl font-black uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-primary/20"
+                    className="w-full py-4 bg-primary text-background rounded-xl font-bold uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
                   >
                     <Scale size={18} />
                     CALCULAR VENCIMENTO
@@ -1340,11 +1318,11 @@ export default function App() {
                       animate={{ opacity: 1, y: 0 }}
                       className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center"
                     >
-                      <div className="text-[10px] text-stone-500 uppercase font-black tracking-widest mb-2">Vencimento Estimado</div>
-                      <div className="text-3xl font-display font-black text-secondary italic">
+                      <div className="text-[10px] text-stone-500 uppercase font-black tracking-widest mb-1">Vencimento Estimado</div>
+                      <div className="text-2xl md:text-3xl font-display font-bold text-secondary">
                         {deadlineResult.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
                       </div>
-                      <div className="text-[10px] text-primary/60 mt-2 font-black uppercase tracking-tight">
+                      <div className="text-[10px] text-primary font-bold mt-1 uppercase">
                         {deadlineResult.toLocaleDateString('pt-BR', { weekday: 'long' })}
                       </div>
                     </motion.div>
@@ -1352,17 +1330,15 @@ export default function App() {
                 </div>
 
                 <div className="bg-primary/5 rounded-2xl p-6 border border-primary/5">
-                  <h3 className="text-[10px] font-black text-primary/40 uppercase tracking-[0.2em] mb-4">Regras Aplicadas</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <h3 className="text-[10px] font-black text-primary/40 uppercase tracking-[0.2em] mb-4">Informações Importantes</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {[
-                      { t: 'Dias Úteis', d: 'Art. 219 CPC/2015' },
-                      { t: 'Recesso', d: '20/Dez a 20/Jan' },
-                      { t: 'Feriados', d: 'Nacionais e SP' },
-                      { t: 'Anuário', d: 'Vigente 2026' }
+                      { t: 'Dias Úteis', d: 'Contagem exclusiva em dias úteis (Art. 219 CPC).' },
+                      { t: 'Prazos Jurídicos', d: 'Suspensão de 20 de dez a 20 de jan (Art. 220 CPC).' }
                     ].map((rule, i) => (
-                      <div key={i} className="p-3 rounded-lg bg-white border border-primary/5 shadow-sm">
+                      <div key={i} className="p-3 rounded-lg bg-background border border-primary/5">
                         <div className="text-primary text-[10px] font-black uppercase mb-1">{rule.t}</div>
-                        <div className="text-[9px] text-stone-400 font-bold uppercase leading-tight">{rule.d}</div>
+                        <div className="text-[9px] text-stone-400 font-bold leading-tight">{rule.d}</div>
                       </div>
                     ))}
                   </div>
@@ -1381,40 +1357,39 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowCalculator(false)}
-              className="fixed inset-0 bg-black/60 z-20"
+              className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm"
             />
             <motion.div 
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 w-full bg-[var(--color-background)] border-t border-primary/10 rounded-t-[32px] p-8 z-30 pb-safe max-h-[95vh] flex flex-col shadow-2xl"
+              transition={{ type: "spring", damping: 32, stiffness: 300 }}
+              className="fixed bottom-0 left-0 w-full bg-[var(--color-background)] border-t border-primary/10 rounded-t-[32px] z-50 pb-safe max-h-[92vh] flex flex-col shadow-2xl"
             >
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex gap-4 items-end">
+              <div className="flex justify-between items-center p-8 pb-4 bg-background/80 backdrop-blur-md sticky top-0 z-10 rounded-t-[32px]">
+                <div className="flex gap-4 items-center">
                   <div>
-                    <h2 className="font-display font-medium text-2xl text-primary">Calculadora</h2>
-                    <p className="text-[10px] text-stone-500 uppercase tracking-widest mt-1">Ferramentas Jurídicas</p>
-                  </div>
-                  <div className="bg-primary/5 p-1 rounded-lg flex gap-1 mb-1">
-                    <button 
-                      onClick={() => setCalcMode('simple')}
-                      className={cn(
-                        "px-3 py-1 rounded text-[10px] font-bold uppercase transition-all",
-                        calcMode === 'simple' ? "bg-primary text-white" : "text-stone-500 hover:text-primary"
-                      )}
-                    >
-                      Simples
-                    </button>
-                    <button 
-                      onClick={() => setCalcMode('legal')}
-                      className={cn(
-                        "px-3 py-1 rounded text-[10px] font-bold uppercase transition-all",
-                        calcMode === 'legal' ? "bg-secondary text-white" : "text-stone-500 hover:text-secondary"
-                      )}
-                    >
-                      Jurídica
-                    </button>
+                    <h2 className="font-display font-bold text-2xl text-primary">Calculadora</h2>
+                    <div className="bg-primary/5 p-1 rounded-lg flex gap-1 mt-1">
+                      <button 
+                        onClick={() => setCalcMode('simple')}
+                        className={cn(
+                          "px-3 py-0.5 rounded text-[10px] font-bold uppercase transition-all",
+                          calcMode === 'simple' ? "bg-primary text-background shadow-sm" : "text-stone-500"
+                        )}
+                      >
+                        Simples
+                      </button>
+                      <button 
+                        onClick={() => setCalcMode('legal')}
+                        className={cn(
+                          "px-3 py-0.5 rounded text-[10px] font-bold uppercase transition-all",
+                          calcMode === 'legal' ? "bg-secondary text-white shadow-sm" : "text-stone-500"
+                        )}
+                      >
+                        Jurídica
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <button 
@@ -1425,7 +1400,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="flex-1 flex flex-col md:flex-row gap-8 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-8 pt-2 space-y-8 custom-scrollbar">
                 {calcMode === 'simple' ? (
                   <>
                     {/* Calculator Interface */}
