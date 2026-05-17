@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, where, getDocs, doc, updateDoc, deleteDoc, serverTimestamp, orderBy, onSnapshot, getDoc } from 'firebase/firestore';
-import { auth, db, signInWithGoogle, logout } from './lib/firebase';
+import { auth, db, signInWithGoogle, logout, handleFirestoreError, OperationType } from './lib/firebase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
@@ -396,6 +396,8 @@ export default function App() {
         ...doc.data()
       }));
       setUserCalculations(calcs);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'calculations');
     });
 
     return () => unsubscribe();
@@ -425,6 +427,8 @@ export default function App() {
       });
       
       setTasks(cloudTasks);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'tasks');
     });
 
     return () => unsubscribe();
@@ -447,6 +451,8 @@ export default function App() {
           theme: cloudSettings.theme || prev.theme
         }));
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `userSettings/${user.uid}`);
     });
 
     return () => unsubscribe();
@@ -481,7 +487,7 @@ export default function App() {
         setCurrentCalculationId(docRef.id);
       }
     } catch (error) {
-      console.error("Error saving calculation:", error);
+      handleFirestoreError(error, OperationType.WRITE, 'calculations');
     } finally {
       setIsSaving(false);
     }
@@ -508,7 +514,7 @@ export default function App() {
       await deleteDoc(doc(db, 'calculations', id));
       if (currentCalculationId === id) startNewCalculation();
     } catch (error) {
-      console.error("Error deleting:", error);
+      handleFirestoreError(error, OperationType.DELETE, `calculations/${id}`);
     }
   };
 
@@ -519,17 +525,37 @@ export default function App() {
       const d = new Date(date);
       const start = `01/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
       const today = new Date();
+      // Use the last day of last month to ensure data existence if very recent
       const end = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
       
       const response = await fetch(`/api/indices?dataInicial=${start}&dataFinal=${end}`);
       const data = await response.json();
       
-      // Calculate total IPCA and total SELIC
-      // This is a simplified version for the quick tool
-      const totalIpcaPercent = data.ipca.reduce((acc: number, item: any) => acc + parseFloat(item.valor), 0);
-      const totalSelicPercent = data.selic.reduce((acc: number, item: any) => acc + parseFloat(item.valor), 0);
+      if (!data.ipca || data.ipca.length === 0) {
+        console.warn("No IPCA data found for this period.");
+        return { correction: 0, interest: 0, warning: "Dados do IPCA indisponíveis para este período. Verifique a data inicial." };
+      }
+
+      // Calculate total IPCA and total SELIC using cumulative logic
+      // V_final = V_inicial * (1 + i1) * (1 + i2) ...
+      let cumulativeIpca = 1;
+      data.ipca.forEach((item: any) => {
+        const val = parseFloat(item.valor.replace(',', '.')) / 100;
+        if (!isNaN(val)) cumulativeIpca *= (1 + val);
+      });
       
-      // Law 14.905/2024 logic: Juros = SELIC - IPCA (min 0)
+      let cumulativeSelic = 1;
+      if (data.selic && data.selic.length > 0) {
+        data.selic.forEach((item: any) => {
+          const val = parseFloat(item.valor.replace(',', '.')) / 100;
+          if (!isNaN(val)) cumulativeSelic *= (1 + val);
+        });
+      }
+
+      const totalIpcaPercent = (cumulativeIpca - 1) * 100;
+      const totalSelicPercent = (cumulativeSelic - 1) * 100;
+      
+      // Law 14.905/2024 logic: Interest = SELIC - IPCA (min 0)
       const calculatedInterestPercent = Math.max(0, totalSelicPercent - totalIpcaPercent);
       
       return {
@@ -577,16 +603,17 @@ export default function App() {
     }
 
     const principal = numericValue;
-    // For 'cost', interest is forced to 0
     const months = Math.max(0, Math.floor((Date.now() - new Date(legalDate).getTime()) / (1000 * 60 * 60 * 24 * 30.44)));
     
-    // If not using real rates (manual), the interest input is usually "per month"
     // If using real rates, our fetcher returns the "total percentage" for the period
+    // If not, the interest input is usually "per month"
     const finalInterestTotalRate = legalItemType === 'cost' ? 0 : (useRealRates ? currentInterest : (currentInterest * months));
-    const finalCorrectionTotalRate = currentCorrection; // Static or Total from API
+    const finalCorrectionTotalRate = currentCorrection;
     
+    // Correct way: Interest applies on TOP of the corrected value
     const correctionValue = principal * (finalCorrectionTotalRate / 100);
-    const interestValue = principal * (finalInterestTotalRate / 100);
+    const correctedPrincipal = principal + correctionValue;
+    const interestValue = correctedPrincipal * (finalInterestTotalRate / 100);
     
     const newDebit: LegalDebit = {
       id: generateId(),
@@ -598,7 +625,7 @@ export default function App() {
       interestFactor: finalInterestTotalRate,
       correctionValue: correctionValue,
       interestValue: interestValue,
-      totalValue: principal + correctionValue + interestValue
+      totalValue: correctedPrincipal + interestValue
     };
 
     setLegalDebits(prev => [...prev, newDebit]);
@@ -777,7 +804,7 @@ export default function App() {
           updatedAt: serverTimestamp()
         });
       } catch (err) {
-        console.error("Cloud save task error:", err);
+        handleFirestoreError(err, OperationType.CREATE, 'tasks');
       }
     } else {
       const newTask: Task = {
@@ -803,7 +830,7 @@ export default function App() {
           updatedAt: serverTimestamp()
         });
       } catch (err) {
-        console.error("Cloud toggle task error:", err);
+        handleFirestoreError(err, OperationType.UPDATE, `tasks/${id}`);
       }
     } else {
       setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
@@ -815,7 +842,7 @@ export default function App() {
       try {
         await deleteDoc(doc(db, 'tasks', id));
       } catch (err) {
-        console.error("Cloud delete task error:", err);
+        handleFirestoreError(err, OperationType.DELETE, `tasks/${id}`);
       }
     } else {
       setTasks(prev => prev.filter(t => t.id !== id));

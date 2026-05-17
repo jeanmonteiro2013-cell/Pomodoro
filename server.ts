@@ -7,8 +7,8 @@ async function startServer() {
   const PORT = 3000;
 
   // API para buscar dados do Banco Central (SGS)
-  // Série 433: IPCA Mensal
-  // Série 1178: SELIC acumulada no mês (anualizada)
+  // Série 433: IPCA Mensal (%)
+  // Série 4390: Selic acumulada no mês (%)
   app.get("/api/indices", async (req, res) => {
     try {
       const { dataInicial, dataFinal } = req.query;
@@ -19,9 +19,9 @@ async function startServer() {
       );
       const ipcaData = await ipcaResponse.json();
 
-      // SELIC
+      // SELIC (acumulada no mês)
       const selicResponse = await fetch(
-        `https://api.bcb.gov.br/dados/serie/bcdata.sgs.1178/dados?formato=json&dataInicial=${dataInicial}&dataFinal=${dataFinal}`
+        `https://api.bcb.gov.br/dados/serie/bcdata.sgs.4390/dados?formato=json&dataInicial=${dataInicial}&dataFinal=${dataFinal}`
       );
       const selicData = await selicResponse.json();
 
