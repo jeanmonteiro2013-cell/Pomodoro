@@ -1,0 +1,8 @@
+{
+  "name": "Pomodoro",
+  "description": "A minimalist, zen Pomodoro timer with task management, session tracking, smooth animations, and judicial deadline notifications.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
