@@ -52,7 +52,8 @@ import {
   Battery,
   Sun,
   Moon,
-  Bell
+  Bell,
+  BookOpen
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -62,7 +63,7 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-type SessionType = 'focus' | 'short' | 'long';
+type SessionType = 'focus' | 'short' | 'long' | 'learning' | 'learningBreak';
 
 interface HistoryEntry {
   id: string;
@@ -105,6 +106,8 @@ interface Settings {
   focus: number;
   short: number;
   long: number;
+  learning: number;
+  learningBreak: number;
   notificationsEnabled: boolean;
   theme: 'light' | 'dark';
 }
@@ -120,6 +123,8 @@ const DEFAULT_SETTINGS: Settings = {
   focus: 60,
   short: 10,
   long: 20,
+  learning: 45,
+  learningBreak: 15,
   notificationsEnabled: true,
   theme: 'light',
 };
@@ -238,8 +243,41 @@ export default function App() {
     }
   });
   
-  const [timeLeft, setTimeLeft] = useState(() => (settings?.focus || 60) * 60);
-  const [isActive, setIsActive] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zen_pomo_timer');
+      if (saved) {
+        const p = JSON.parse(saved);
+        if (p.isActive && p.endTime) {
+          const rem = Math.round((p.endTime - Date.now()) / 1000);
+          return Math.max(0, rem);
+        }
+        if (p.timeLeft !== undefined) return p.timeLeft;
+      }
+    } catch(e) {}
+    return (settings?.focus || 60) * 60;
+  });
+
+  const [isActive, setIsActive] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zen_pomo_timer');
+      if (saved) {
+        return !!JSON.parse(saved).isActive;
+      }
+    } catch(e) {}
+    return false;
+  });
+
+  const [endTime, setEndTime] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem('zen_pomo_timer');
+      if (saved) {
+        return JSON.parse(saved).endTime || null;
+      }
+    } catch(e) {}
+    return null;
+  });
+
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showTasks, setShowTasks] = useState(false);
@@ -425,15 +463,14 @@ export default function App() {
 
     const q = query(
       collection(db, 'calculations'),
-      where('userId', '==', user.uid),
-      orderBy('updatedAt', 'desc')
+      where('userId', '==', user.uid)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const calcs = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      }));
+      })).sort((a: any, b: any) => (b.updatedAt?.toMillis?.() || 0) - (a.updatedAt?.toMillis?.() || 0));
       setUserCalculations(calcs);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'calculations');
@@ -448,8 +485,7 @@ export default function App() {
 
     const q = query(
       collection(db, 'tasks'),
-      where('userId', '==', user.uid),
-      orderBy('order', 'asc')
+      where('userId', '==', user.uid)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -460,10 +496,11 @@ export default function App() {
           title: data.title || data.text || '', // handle both just in case
           completed: data.completed,
           createdAt: data.createdAt || Date.now(),
+          order: data.order || 0,
           priority: data.priority,
           dueDate: data.dueDate
         } as Task;
-      });
+      }).sort((a, b) => (a.order || 0) - (b.order || 0));
       
       setTasks(cloudTasks);
     }, (error) => {
@@ -777,12 +814,24 @@ export default function App() {
 
   const resetTimer = useCallback(() => {
     setIsActive(false);
+    setEndTime(null);
     setTimeLeft(settings[sessionType] * 60);
     if (timerRef.current) clearInterval(timerRef.current);
+    const silent = document.getElementById('silent-audio') as HTMLAudioElement;
+    if (silent) silent.pause();
   }, [sessionType, settings]);
 
   const toggleTimer = () => {
-    setIsActive(!isActive);
+    const silent = document.getElementById('silent-audio') as HTMLAudioElement;
+    if (isActive) {
+      setIsActive(false);
+      setEndTime(null); // Pause logic
+      if (silent) silent.pause();
+    } else {
+      setIsActive(true);
+      setEndTime(Date.now() + timeLeft * 1000); // Resume logic
+      if (silent) silent.play().catch(() => {});
+    }
   };
 
   const playSound = useCallback((type: 'focus' | 'short' | 'long') => {
@@ -803,15 +852,14 @@ export default function App() {
 
     const q = query(
       collection(db, 'history'),
-      where('userId', '==', user.uid),
-      orderBy('timestamp', 'desc')
+      where('userId', '==', user.uid)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const cloudHistory = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      } as HistoryEntry));
+      } as HistoryEntry)).sort((a, b) => b.timestamp - a.timestamp);
       
       setHistory(cloudHistory);
     });
@@ -910,28 +958,79 @@ export default function App() {
     if (activeTaskId === id) setActiveTaskId(null);
   };
 
+  // Sync timer state to localStorage whenever it changes
   useEffect(() => {
-    if (isActive && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0) {
-      setIsActive(false);
-      playSound(sessionType);
-      
-      const sessionLabel = sessionType === 'focus' ? 'Foco' : sessionType === 'short' ? 'Pausa' : 'Descanso';
-      sendNotification(`Sessão de ${sessionLabel} finalizada!`, `Parabéns! Você completou sua sessão de ${sessionLabel}.`);
-      
-      recordSession(sessionType);
-      if (sessionType === 'focus') {
-        setSessionsCompleted(prev => prev + 1);
-      }
+    localStorage.setItem('zen_pomo_timer', JSON.stringify({
+      isActive,
+      timeLeft,
+      endTime
+    }));
+  }, [isActive, timeLeft, endTime]);
+
+  useEffect(() => {
+    if (isActive && 'mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing';
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: `${Math.floor(timeLeft / 60).toString().padStart(2, '0')}:${(timeLeft % 60).toString().padStart(2, '0')} - ${sessionType === 'focus' ? 'Foco' : sessionType === 'learning' ? 'Estudo' : 'Pausa'}`,
+        artist: 'Pomodoro Estratégico',
+        album: 'Temporizador Ativo'
+      });
     }
+
+    if (isActive && endTime) {
+      // Create a background-friendly silent audio to keep mediaSession alive if needed.
+      // But just setting metadata frequently is sometimes enough.
+      
+      timerRef.current = setInterval(() => {
+        const remaining = Math.max(0, Math.round((endTime - Date.now()) / 1000));
+        setTimeLeft(remaining);
+        
+    const minStr = Math.floor(remaining / 60).toString().padStart(2, '0');
+        const secStr = (remaining % 60).toString().padStart(2, '0');
+        document.title = `[${minStr}:${secStr}] Pomodoro`;
+        
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: `${minStr}:${secStr} - ${sessionType === 'focus' ? 'Foco' : sessionType === 'learning' ? 'Estudo' : 'Pausa'}`,
+            artist: 'Pomodoro Estratégico',
+            album: 'Temporizador Ativo'
+          });
+        }
+        
+        if (remaining <= 0) {
+          setIsActive(false);
+          setEndTime(null);
+          playSound(sessionType);
+          
+          const silent = document.getElementById('silent-audio') as HTMLAudioElement;
+          if (silent) silent.pause();
+          
+          document.title = "Pomodoro Estratégico Judicial";
+          
+          if ('mediaSession' in navigator) {
+             navigator.mediaSession.playbackState = 'none';
+          }
+          
+          const sessionLabel = sessionType === 'focus' ? 'Foco' : sessionType === 'short' ? 'Pausa' : sessionType === 'long' ? 'Descanso' : sessionType === 'learning' ? 'Estudo' : 'Pausa de Estudo';
+          sendNotification(`Sessão de ${sessionLabel} finalizada!`, `Parabéns! Você completou sua sessão de ${sessionLabel}.`);
+          
+          recordSession(sessionType);
+          if (sessionType === 'focus' || sessionType === 'learning') {
+            setSessionsCompleted(prev => prev + 1);
+          }
+        }
+      }, 500); // 500ms for more precision than 1000ms
+    } else if (isActive && !endTime && timeLeft > 0) {
+      setEndTime(Date.now() + timeLeft * 1000);
+    } else if (!isActive) {
+      document.title = "Pomodoro Estratégico Judicial";
+    }
+
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isActive, timeLeft, playSound, sessionType, recordSession]);
+  }, [isActive, timeLeft, endTime, playSound, sessionType, recordSession]);
 
   // Sync timeLeft when session type or settings change (if timer is NOT active)
   useEffect(() => {
@@ -1021,10 +1120,76 @@ export default function App() {
 
   const percentComplete = Math.max(0, Math.min(1, 1 - (timeLeft / ((settings[sessionType] || 60) * 60))));
 
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPipActive, setIsPipActive] = useState(false);
+
+  // Picture in Picture Canvas Drawing
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Background
+    ctx.fillStyle = '#0A2417'; // Primary dark color
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Text
+    const minutes = Math.floor(timeLeft / 60);
+    const seconds = timeLeft % 60;
+    const displayStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+    ctx.fillStyle = '#FDFBF7';
+    ctx.font = 'bold 120px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(displayStr, canvas.width / 2, canvas.height / 2 - 20);
+
+    const typeStr = sessionType === 'focus' ? 'FOCO' : sessionType === 'short' ? 'PAUSA' : sessionType === 'long' ? 'DESCANSO' : sessionType === 'learning' ? 'ESTUDO' : 'PAUSA EST.';
+    ctx.fillStyle = '#C2B8A3';
+    ctx.font = 'bold 32px Inter, sans-serif';
+    ctx.fillText(typeStr, canvas.width / 2, canvas.height / 2 + 70);
+  }, [timeLeft, sessionType]);
+
+  const togglePiP = async () => {
+    try {
+      const video = videoRef.current;
+      if (!video) return;
+
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        setIsPipActive(false);
+      } else {
+        const canvas = canvasRef.current;
+        if (canvas) {
+          // Setup stream
+          const stream = canvas.captureStream(30); // 30 fps
+          video.srcObject = stream;
+          await video.play();
+          await video.requestPictureInPicture();
+          setIsPipActive(true);
+        }
+      }
+    } catch (err) {
+      console.error("PiP error:", err);
+      // Optional: Inform user
+    }
+  };
+
   // --- Components ---
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 overflow-hidden safe-area-inset">
+      <audio 
+        id="silent-audio" 
+        src="data:audio/mp3;base64,//NExAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq" 
+        loop 
+        style={{ display: 'none' }} 
+      />
+      <canvas ref={canvasRef} width={400} height={300} style={{ display: 'none' }} />
+      <video ref={videoRef} muted playsInline style={{ display: 'none' }} />
+
       <header className="fixed top-0 left-0 w-full p-4 md:p-6 flex justify-between items-center z-10 bg-background/50 backdrop-blur-sm md:bg-transparent">
         <motion.div 
           initial={{ opacity: 0 }}
@@ -1100,6 +1265,13 @@ export default function App() {
             )}
           </button>
           <button 
+            onClick={() => setShowHistory(true)}
+            className="p-2 rounded-xl text-primary hover:bg-primary/5 transition-colors"
+            title="Histórico (Arquivo de Sessões)"
+          >
+            <History size={20} className="md:w-6 md:h-6" />
+          </button>
+          <button 
             onClick={() => setShowSettings(true)}
             className="p-2 rounded-xl text-primary hover:bg-primary/5 transition-colors"
             title="Configurações"
@@ -1128,13 +1300,20 @@ export default function App() {
               {[
                 { id: 'focus', icon: Brain, label: 'Foco' },
                 { id: 'short', icon: Coffee, label: 'Pausa' },
-                { id: 'long', icon: Battery, label: 'Descanso' }
+                { id: 'long', icon: Battery, label: 'Descanso' },
+                { id: 'learning', icon: BookOpen, label: 'Estudo' },
+                { id: 'learningBreak', icon: Coffee, label: 'Pausa Est.' }
               ].map((m) => (
                 <button
                   key={m.id}
-                  onClick={() => setSessionType(m.id as SessionType)}
+                  onClick={() => {
+                    setSessionType(m.id as SessionType);
+                    setIsActive(false);
+                    setEndTime(null);
+                    setTimeLeft(settings[m.id as SessionType] * 60);
+                  }}
                   className={cn(
-                    "flex items-center gap-2 px-4 md:px-6 py-3 rounded-xl transition-all duration-500",
+                    "flex flex-col md:flex-row items-center justify-center gap-1 md:gap-2 px-2 md:px-4 py-2 md:py-3 rounded-xl transition-all duration-500",
                     sessionType === m.id 
                       ? "bg-primary text-background shadow-lg shadow-primary/20 scale-105" 
                       : "text-primary/40 hover:text-primary hover:bg-primary/5"
@@ -1197,8 +1376,14 @@ export default function App() {
               </motion.span>
               <div className="mt-4 flex flex-col items-center gap-1">
                 <p className="text-[9px] md:text-[10px] text-primary/30 uppercase font-black tracking-[0.4em] overflow-hidden">
-                  {sessionType === 'focus' ? 'ALTA PERFORMANCE' : 'RECUPERAÇÃO ESTRATÉGICA'}
+                  {sessionType === 'focus' ? 'ALTA PERFORMANCE' : sessionType === 'learning' ? 'MODO APRENDIZADO' : sessionType === 'short' || sessionType === 'learningBreak' ? 'RECUPERAÇÃO ESTRATÉGICA' : 'DESCANSO PROFUNDO'}
                 </p>
+                
+                {/* Contador de Sessões Concluídas */}
+                <div className="mt-2 py-1 px-3 bg-secondary/10 text-secondary border border-secondary/20 rounded-full flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-secondary shadow-[0_0_8px_rgba(var(--secondary-rgb),0.6)] animate-pulse" />
+                  <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest">Sessões: {sessionsCompleted}</span>
+                </div>
                 <AnimatePresence mode="wait">
                   {activeTaskId && (
                     <motion.div 
@@ -1219,39 +1404,60 @@ export default function App() {
           </div>
 
           {/* Controls */}
-          <div className="flex items-center justify-center gap-6 md:gap-8">
-            <button
-              onClick={resetTimer}
-              className="w-14 h-14 md:w-16 md:h-16 rounded-full border border-primary/10 flex items-center justify-center text-primary/60 hover:bg-primary/5 hover:text-primary transition-all active:scale-90"
-              title="Reiniciar"
-            >
-              <RotateCcw size={20} className="md:size-24" />
-            </button>
-            
-            <button
-              onClick={() => setIsActive(!isActive)}
-              className={cn(
-                "w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center shadow-2xl transition-all duration-500 active:scale-95",
-                isActive 
-                  ? "bg-rose-500 text-white shadow-rose-500/30" 
-                  : "bg-primary text-background shadow-primary/30 hover:scale-105"
-              )}
-            >
-              {isActive ? <Pause size={28} md:size-32 fill="currentColor" /> : <Play size={28} md:size-32 fill="currentColor" className="ml-1" />}
-            </button>
+          <div className="flex flex-col items-center gap-6">
+            <div className="flex items-center justify-center gap-6 md:gap-8">
+              <button
+                onClick={resetTimer}
+                className="w-14 h-14 md:w-16 md:h-16 rounded-full border border-primary/10 flex items-center justify-center text-primary/60 hover:bg-primary/5 hover:text-primary transition-all active:scale-90"
+                title="Reiniciar"
+              >
+                <RotateCcw size={20} className="md:size-24" />
+              </button>
+              
+              <button
+                onClick={toggleTimer}
+                className={cn(
+                  "w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center shadow-2xl transition-all duration-500 active:scale-95",
+                  isActive 
+                    ? "bg-rose-500 text-white shadow-rose-500/30" 
+                    : "bg-primary text-background shadow-primary/30 hover:scale-105"
+                )}
+              >
+                {isActive ? <Pause size={28} md:size-32 fill="currentColor" /> : <Play size={28} md:size-32 fill="currentColor" className="ml-1" />}
+              </button>
 
-            <button
-              onClick={() => {
-                const nextType = sessionType === 'focus' ? 'short' : 'focus';
-                setSessionType(nextType);
-                setIsActive(false);
-                setTimeLeft(settings[nextType] * 60);
-              }}
-              className="w-14 h-14 md:w-16 md:h-16 rounded-full border border-primary/10 flex items-center justify-center text-primary/60 hover:bg-primary/5 hover:text-primary transition-all active:scale-90"
-              title="Próximo"
-            >
-              <ChevronRight size={20} className="md:size-24" />
-            </button>
+              <button
+                onClick={() => {
+                  let nextType: SessionType = 'focus';
+                  if (sessionType === 'focus') nextType = 'short';
+                  else if (sessionType === 'short' || sessionType === 'long') nextType = 'focus';
+                  else if (sessionType === 'learning') nextType = 'learningBreak';
+                  else if (sessionType === 'learningBreak') nextType = 'learning';
+                  
+                  const silent = document.getElementById('silent-audio') as HTMLAudioElement;
+                  if (silent) silent.pause();
+                  
+                  setSessionType(nextType);
+                  setIsActive(false);
+                  setEndTime(null);
+                  setTimeLeft(settings[nextType] * 60);
+                }}
+                className="w-14 h-14 md:w-16 md:h-16 rounded-full border border-primary/10 flex items-center justify-center text-primary/60 hover:bg-primary/5 hover:text-primary transition-all active:scale-90"
+                title="Próximo"
+              >
+                <ChevronRight size={20} className="md:size-24" />
+              </button>
+            </div>
+            
+            {(document.pictureInPictureEnabled || document.createElement('video').requestPictureInPicture) && (
+              <button 
+                onClick={togglePiP}
+                className="text-xs text-primary/60 hover:text-primary flex items-center gap-2 px-4 py-2 rounded-full hover:bg-primary/5 transition-colors font-medium border border-transparent hover:border-primary/10"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><rect x="12" y="12" width="7" height="6" rx="1" ry="1"></rect></svg>
+                {isPipActive ? "Fechar Pop-up" : "Temporizador Flutuante"}
+              </button>
+            )}
           </div>
         </motion.div>
       </main>
@@ -1299,22 +1505,24 @@ export default function App() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-8 pt-2 space-y-8 custom-scrollbar">
-                {(['focus', 'short', 'long'] as SessionType[]).map((type) => (
+                {(['focus', 'short', 'long', 'learning', 'learningBreak'] as SessionType[]).map((type) => (
                   <div key={type} className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className={cn(
                         "w-10 h-10 rounded-xl flex items-center justify-center border",
-                        type === 'focus' ? 'bg-primary border-primary text-background' : type === 'short' ? 'bg-secondary border-secondary text-white' : 'bg-primary/10 border-primary/20 text-primary'
+                        type === 'focus' ? 'bg-primary border-primary text-background' : type === 'short' ? 'bg-secondary border-secondary text-white' : type === 'learning' ? 'bg-teal-700 border-teal-800 text-white' : type === 'learningBreak' ? 'bg-teal-50 border-teal-100 text-teal-800' : 'bg-primary/10 border-primary/20 text-primary'
                       )}>
                         {type === 'focus' ? (
                           <Brain className="w-5 h-5" />
+                        ) : type === 'learning' || type === 'learningBreak' ? (
+                          <BookOpen className="w-5 h-5" />
                         ) : (
                           <Coffee className="w-5 h-5" />
                         )}
                       </div>
                       <div>
                         <p className="font-bold text-primary capitalize text-sm">
-                          {type === 'focus' ? 'Foco' : type === 'short' ? 'Pausa Curta' : 'Descanso'}
+                          {type === 'focus' ? 'Foco' : type === 'short' ? 'Pausa Curta' : type === 'long' ? 'Descanso' : type === 'learning' ? 'Estudo (Foco)' : 'Estudo (Pausa)'}
                         </p>
                         <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black mt-1">Minutos</p>
                       </div>
@@ -2450,17 +2658,19 @@ export default function App() {
                       <div className="flex items-center gap-4">
                         <div className={cn(
                           "w-12 h-12 rounded-xl flex items-center justify-center border",
-                          entry.type === 'focus' ? 'bg-primary border-primary text-white' : entry.type === 'short' ? 'bg-secondary border-secondary text-white' : 'bg-primary/10 border-primary/20 text-primary'
+                          entry.type === 'focus' ? 'bg-primary border-primary text-white' : entry.type === 'short' ? 'bg-secondary border-secondary text-white' : entry.type === 'learning' ? 'bg-teal-700 border-teal-800 text-white' : entry.type === 'learningBreak' ? 'bg-teal-50 border-teal-100 text-teal-800' : 'bg-primary/10 border-primary/20 text-primary'
                         )}>
                           {entry.type === 'focus' ? (
                             <CheckCircle2 className="w-6 h-6" />
+                          ) : entry.type === 'learning' || entry.type === 'learningBreak' ? (
+                            <BookOpen className="w-6 h-6" />
                           ) : (
                             <Coffee className="w-6 h-6" />
                           )}
                         </div>
                         <div>
                           <p className="font-bold text-primary text-sm capitalize">
-                            {entry.type === 'focus' ? 'Sessão de Foco' : entry.type === 'short' ? 'Pausa Curta' : 'Descanso em Lote'}
+                            {entry.type === 'focus' ? 'Sessão de Foco' : entry.type === 'short' ? 'Pausa Curta' : entry.type === 'long' ? 'Descanso em Lote' : entry.type === 'learning' ? 'Sessão de Estudo' : 'Pausa de Estudo'}
                           </p>
                           <p className="text-[10px] text-stone-400 font-black uppercase tracking-tight mt-0.5">
                             {new Date(entry.timestamp).toLocaleDateString('pt-BR')} • {new Date(entry.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}

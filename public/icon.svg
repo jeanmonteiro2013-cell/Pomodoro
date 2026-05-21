@@ -1,4 +1,38 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#0A2417" rx="100"/>
-  <path fill="#ffffff" d="M256,48C141.1,48,48,141.1,48,256s93.1,208,208,208s208-93.1,208-208S370.9,48,256,48z M256,416 c-88.4,0-160-71.6-160-160S167.6,96,256,96s160,71.6,160,160S344.4,416,256,416z M272,160h-32v112l96,48l16-24l-80-40V160z"/>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#14412B"/>
+      <stop offset="100%" stop-color="#0A2417"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF5E1"/>
+      <stop offset="100%" stop-color="#D4AF37"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)" rx="112"/>
+  
+  <!-- Outer Clock Ring -->
+  <circle cx="256" cy="256" r="160" fill="none" stroke="url(#gold)" stroke-width="16" stroke-dasharray="10 30" stroke-linecap="round"/>
+  
+  <!-- Inner ring -->
+  <circle cx="256" cy="256" r="130" fill="none" stroke="url(#gold)" stroke-width="8" opacity="0.3"/>
+  
+  <!-- Balance scale center -->
+  <path fill="url(#gold)" d="M248,150 L264,150 L264,360 L248,360 Z"/>
+  <!-- Balance top bar -->
+  <path fill="url(#gold)" d="M150,180 L362,180 L362,192 L150,192 Z"/>
+  
+  <!-- Balance Strings & Bowls -->
+  <!-- Left Bowl -->
+  <path fill="none" stroke="url(#gold)" stroke-width="6" d="M160,192 L140,280"/>
+  <path fill="none" stroke="url(#gold)" stroke-width="6" d="M180,192 L200,280"/>
+  <path fill="url(#gold)" d="M130,280 C130,300 170,310 210,280 Z"/>
+  
+  <!-- Right Bowl (slightly lower like a ticking arm) -->
+  <path fill="none" stroke="url(#gold)" stroke-width="6" d="M332,192 L312,295"/>
+  <path fill="none" stroke="url(#gold)" stroke-width="6" d="M352,192 L372,295"/>
+  <path fill="url(#gold)" d="M302,295 C302,315 342,325 382,295 Z"/>
+
+  <!-- Base of Scale -->
+  <path fill="url(#gold)" d="M216,360 L296,360 L306,375 L206,375 Z"/>
 </svg>
